@@ -8,7 +8,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-blue-600">Welcome to LifeHub 🎉</h1>
         <AuthButtons />
         <div className="w-full">
-          <h2 className="text-xl font-semibold mb-2">Your To-Dos</h2>
+          <h2 className="text-xl font-semibold text-blue-600">Your To-Dos</h2>
           <TodoList />
         </div>
       </div>
