@@ -91,30 +91,29 @@ export default function TodoList() {
       </form>
 
       <ul className="space-y-2">
-        {todos.map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center justify-between rounded-lg border bg-white px-3 py-2"
-          >
-            <button
-              onClick={() => toggleDone(t.id, t.done)}
-              className={`text-left flex-1 ${
-                t.done ? "line-through text-gray-400" : ""
-              }`}
-              title="Toggle done"
-            >
-              {t.text}
-            </button>
-            <button
-              onClick={() => removeTodo(t.id)}
-              className="text-red-600 text-sm"
-              title="Delete"
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
+  {todos.map((t) => (
+    <li
+      key={t.id}
+      className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3 hover:bg-gray-100 transition"
+    >
+      <button
+        onClick={() => toggleDone(t.id, t.done)}
+        className={`text-left flex-1 ${
+          t.done ? "line-through text-gray-400" : "text-gray-800"
+        }`}
+      >
+        {t.text}
+      </button>
+      <button
+        onClick={() => removeTodo(t.id)}
+        className="text-red-500 text-sm hover:underline"
+      >
+        Delete
+      </button>
+    </li>
+  ))}
+</ul>
+
     </div>
   );
 }
