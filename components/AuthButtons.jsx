@@ -53,7 +53,10 @@ export default function AuthButtons() {
           className="w-8 h-8 rounded-full"
         />
       )}
-      <span className="text-sm">{user.displayName || user.email}</span>
+<span className="text-sm font-medium text-gray-800">
+  {user.displayName || user.email}
+</span>
+
       <button
         onClick={handleSignOut}
         className="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800"

@@ -77,11 +77,12 @@ export default function TodoList() {
     <div className="w-full max-w-md space-y-4">
       <form onSubmit={addTodo} className="flex gap-2">
         <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Add a to-do…"
-          className="flex-1 rounded-lg border px-3 py-2"
-        />
+  value={text}
+  onChange={(e) => setText(e.target.value)}
+  placeholder="Add a to-do…"
+  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+/>
+
         <button
           type="submit"
           className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium"
