@@ -1,5 +1,6 @@
 import AuthButtons from "@/components/AuthButtons";
 import TodoList from "@/components/TodoList";
+import Upcoming from "@/components/Upcoming";
 
 export default function Home() {
   return (
@@ -8,6 +9,11 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-indigo-700 tracking-tight">
           Welcome to LifeHub 🎉
         </h1>
+        <div className="w-full mt-8">
+  <h2 className="text-2xl font-semibold text-gray-800 mb-2">Upcoming</h2>
+  <Upcoming />
+</div>
+
 
         <AuthButtons />
 
