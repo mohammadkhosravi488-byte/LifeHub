@@ -17,6 +17,11 @@ export default function Home() {
           <AuthButtons />
         </div>
 
+        <Link href="/debug" className="inline-block px-3 py-2 rounded-md bg-gray-100 text-gray-800 text-sm">
+            Debug
+          </Link>
+
+
         {/* Quick actions / nav */}
         <div className="w-full flex items-center gap-3">
           <Link
