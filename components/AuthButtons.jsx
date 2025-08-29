@@ -1,35 +1,77 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { auth, googleProvider } from "@/lib/firebase";
+import { useEffect, useState } from "react";
+import { auth, googleProvider, db } from "@/lib/firebase";
 import {
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 export default function AuthButtons() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(false);
 
+  // Keep UI in sync with auth; also handle redirect-based login and write profile
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
+    // If a previous attempt fell back to redirect, resolve it silently
+    getRedirectResult(auth).catch(() => {});
+
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+
+      // Create/update basic user profile for sharing features
+      if (u) {
+        try {
+          await setDoc(
+            doc(db, "profiles", u.uid),
+            {
+              uid: u.uid,
+              email: u.email || "",
+              displayName: u.displayName || "",
+              photoURL: u.photoURL || "",
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.error("Failed to upsert profile:", e);
+        }
+      }
+    });
+
     return () => unsub();
   }, []);
 
   const handleSignIn = async () => {
+    setLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Sign-in failed", error);
-      alert("Google Sign-in failed. Check console for details.");
+    } catch (e) {
+      // Popup may be blocked — fall back to redirect
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (err) {
+        console.error("Sign-in failed:", err);
+        alert("Google Sign-in failed. Check console for details.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSignOut = async () => {
+    setLoading(true);
     try {
       await signOut(auth);
-    } catch (error) {
-      console.error("Sign-out failed", error);
+    } catch (e) {
+      console.error("Sign-out failed:", e);
+      alert("Sign-out failed. See console for details.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -37,31 +79,33 @@ export default function AuthButtons() {
     return (
       <button
         onClick={handleSignIn}
-        className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:opacity-90"
+        disabled={loading}
+        className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:opacity-90 disabled:opacity-60"
       >
-        Sign in with Google
+        {loading ? "Signing in…" : "Sign in with Google"}
       </button>
     );
   }
 
   return (
     <div className="flex items-center gap-3">
-      {user.photoURL && (
+      {user.photoURL ? (
         <img
           src={user.photoURL}
           alt="avatar"
           className="w-8 h-8 rounded-full"
+          referrerPolicy="no-referrer"
         />
-      )}
-<span className="text-sm font-medium text-gray-800">
-  {user.displayName || user.email}
-</span>
-
+      ) : null}
+      <span className="text-sm font-medium text-gray-800">
+        {user.displayName || user.email}
+      </span>
       <button
         onClick={handleSignOut}
-        className="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800"
+        disabled={loading}
+        className="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:opacity-60"
       >
-        Sign out
+        {loading ? "Signing out…" : "Sign out"}
       </button>
     </div>
   );
