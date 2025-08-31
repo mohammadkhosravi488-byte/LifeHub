@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+:root{
+  --page-padding:24px;
+  --card-bg:#ffffff;
+  --outline-neutral:#E5E7EB; /* gray-200 */
+  --ink:#111827;             /* gray-900 */
+  --ink-muted:#6B7280;       /* gray-500 */
+  --brand:#4F46E5;           /* indigo-600 */
+  --accent-red:#EF4444;      /* red-500 */
+  --success-green:#10B981;   /* emerald-500 */
+  --accent-purple:#7C3AED;   /* violet-600 */
+}
+*{scrollbar-width:thin; scrollbar-color:#c7cbd1 transparent;}
+::-webkit-scrollbar{width:12px;height:12px}
+::-webkit-scrollbar-thumb{background:#c7cbd1;border-radius:8px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}

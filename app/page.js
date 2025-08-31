@@ -9,64 +9,72 @@ import AddEvent from "@/components/AddEvent";
 import CalendarTabs from "@/components/CalendarTabs";
 import CalendarMonth from "@/components/CalendarMonth";
 
-export default function Home() {
-  const [calendarFilter, setCalendarFilter] = useState("all");
+import HeaderBar from "@/components/HeaderBar";
+import ControlStrip from "@/components/ControlStrip";
+import LeftRail from "@/components/LeftRail";
+import CalendarDay from "@/components/CalendarDay";
+import CalendarMonth from "@/components/CalendarMonth";
+import Upcoming from "@/components/Upcoming";
+import AddEvent from "@/components/AddEvent";
+import TodoList from "@/components/TodoList";
+import AuthButtons from "@/components/AuthButtons";
+import AIConsole from "@/components/AIConsole";
+import { useState } from "react";
+
+export default function Home(){
+  const [calendarFilter,setCalendarFilter]=useState("all");
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="flex flex-col gap-8 w-full max-w-3xl p-8 bg-white rounded-2xl shadow-lg">
-        <h1 className="text-4xl font-bold text-indigo-700 tracking-tight text-center">
-          Welcome to LifeHub 🎉
-        </h1>
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 text-[var(--ink)]">
+      <HeaderBar />
 
-        <div className="self-center">
-          <AuthButtons />
+      <ControlStrip
+        value={calendarFilter}
+        onChange={setCalendarFilter}
+        onAddCalendar={()=>alert("Add Calendar dialog (coming soon)")}
+        onSearchOpen={()=>{}}
+        onFilterOpen={()=>alert("Filters (coming soon)")}
+      />
+
+      <div className="max-w-[1600px] mx-auto px-6 mt-6 grid grid-cols-1 xl:grid-cols-[60px_1fr_560px] gap-6">
+        <LeftRail />
+
+        {/* Left column: Calendar + Todo */}
+        <div className="flex flex-col gap-6">
+          {/* Calendar card (Day view) */}
+          <CalendarDay calendarFilter={calendarFilter} />
+
+          {/* Month view below (for context) */}
+          <section className="bg-[var(--card-bg)] border border-[var(--outline-neutral)] rounded-[24px] p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-2">Calendar</h2>
+            <CalendarMonth calendarFilter={calendarFilter} />
+          </section>
+
+          {/* To-do list card */}
+          <section className="bg-[var(--card-bg)] border border-[var(--outline-neutral)] rounded-[24px] p-6">
+            <h2 className="text-[22px] font-bold text-center mb-3">To do list</h2>
+            <TodoList />
+          </section>
         </div>
 
-        <div className="w-full flex items-center gap-3">
-          <Link href="/import" className="inline-block px-3 py-2 rounded-md bg-indigo-600 text-white text-sm">
-            Import from .ics
-          </Link>
-          <Link href="/settings" className="inline-block px-3 py-2 rounded-md bg-gray-200 text-gray-800 text-sm">
-            Settings
-          </Link>
+        {/* Right column: AI Console + Upcoming + AddEvent + Auth */}
+        <div className="flex flex-col gap-6">
+          <AIConsole />
+          <section className="bg-[var(--card-bg)] border border-[var(--outline-neutral)] rounded-[24px] p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-2">Upcoming</h2>
+            <Upcoming calendarFilter={calendarFilter}/>
+          </section>
+          <section className="bg-[var(--card-bg)] border border-[var(--outline-neutral)] rounded-[24px] p-6">
+            <h2 className="text-2xl font-semibold text-gray-800 mb-2">Add Event</h2>
+            <AddEvent />
+          </section>
+          <div className="bg-white/60 rounded-[16px] p-4 border border-[var(--outline-neutral)]">
+            <AuthButtons />
+          </div>
         </div>
-
-        {/* Tabs */}
-        <section className="w-full">
-          <CalendarTabs value={calendarFilter} onChange={setCalendarFilter} />
-        </section>
-        
-        {/* Tabs */}
-        <section className="w-full">
-          <CalendarTabs value={calendarFilter} onChange={setCalendarFilter} />
-        </section>
-
-        {/* Month calendar (filtered) */}
-        <section className="w-full">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-2">Calendar</h2>
-          <CalendarMonth calendarFilter={calendarFilter} />
-        </section>
-
-        {/* Upcoming (filtered or all) */}
-
-        {/* Upcoming (filtered or all) */}
-        <section className="w-full">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-2">Upcoming</h2>
-          <Upcoming calendarFilter={calendarFilter} />
-        </section>
-
-        {/* Add event (choose calendar) */}
-        <section className="w-full">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-2">Add Event</h2>
-          <AddEvent calendarFilter={calendarFilter} />
-        </section>
-
-        <section className="w-full">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-2">Your To-Dos</h2>
-          <TodoList />
-        </section>
       </div>
+
+      <div className="h-8" />
     </main>
   );
 }
