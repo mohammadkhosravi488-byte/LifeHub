@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { parseIcs } from "@/lib/ics";
 import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, Timestamp, collection, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 export default function ImportPage() {
@@ -11,34 +11,44 @@ export default function ImportPage() {
   const [events, setEvents] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
-  const [error, setError] = useState("");
+
+  const [calendars, setCalendars] = useState([]);
+  const [calendarId, setCalendarId] = useState("timetable");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, "users", user.uid, "calendars"), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
+      setCalendars(list);
+      if (list.length && !list.find(c=>c.id===calendarId)) {
+        setCalendarId(list[0].id);
+      }
+    });
+    return () => unsub();
+  }, [user]);
+
   const handleFile = async (e) => {
-    setError("");
     const file = e.target.files?.[0];
     if (!file) return;
+    const text = await file.text();
     try {
-      const text = await file.text();
-      const parsed = parseIcs(text);
+      const parsed = parseIcs(text).filter((ev) => ev.start && ev.end);
       setEvents(parsed);
       setSavedCount(0);
-      if (parsed.length === 0) setError("No valid events found in this .ics file.");
     } catch (err) {
       console.error(err);
-      setError("Failed to read or parse the .ics file.");
-      setEvents([]);
+      alert("Failed to parse .ics file");
     }
   };
 
   const saveAll = async () => {
-    if (!user || events.length === 0) return;
+    if (!user || events.length === 0 || !calendarId) return;
     setSaving(true);
-    setError("");
     let success = 0;
     for (const ev of events) {
       try {
@@ -52,6 +62,7 @@ export default function ImportPage() {
             end: Timestamp.fromDate(ev.end),
             updatedAt: serverTimestamp(),
             source: "ics",
+            calendarId,
           },
           { merge: true }
         );
@@ -59,12 +70,10 @@ export default function ImportPage() {
         setSavedCount(success);
       } catch (e) {
         console.error("Save failed for", ev.summary, e);
-        setError(`Save failed: ${String(e?.message || e)}`);
-        break; // stop early and show the first error
       }
     }
     setSaving(false);
-    if (success > 0 && !error) alert(`Saved ${success} events.`);
+    alert(`Saved ${success} events.`);
   };
 
   if (!user) {
@@ -80,28 +89,40 @@ export default function ImportPage() {
     <main className="max-w-2xl mx-auto p-6 space-y-4">
       <h1 className="text-2xl font-bold">Import Sentral Calendar (.ics)</h1>
 
-      <input type="file" accept=".ics,text/calendar" onChange={handleFile} />
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-700">Import into:</label>
+        <select
+          value={calendarId}
+          onChange={(e) => setCalendarId(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+        >
+          {calendars.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
 
-      {error && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      <input
+        type="file"
+        accept=".ics,text/calendar"
+        onChange={handleFile}
+        className="mb-2"
+      />
 
       {events.length > 0 && (
-        <>
+        <div>
           <p className="text-gray-800">
-            Parsed <strong>{events.length}</strong> event(s).
+            Parsed <strong>{events.length}</strong> events.
             {savedCount > 0 && <> Saved: <strong>{savedCount}</strong></>}
           </p>
           <button
             onClick={saveAll}
             disabled={saving}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
+            className="mt-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
           >
             {saving ? "Saving..." : "Save to my calendar"}
           </button>
-        </>
+        </div>
       )}
     </main>
   );

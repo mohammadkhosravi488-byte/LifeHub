@@ -2,70 +2,57 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  limit,
-} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import {
+  collection, query, where, orderBy, limit, onSnapshot,
+} from "firebase/firestore";
 
-export default function Upcoming() {
+export default function Upcoming({ calendarFilter = "all" }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
-  }, []);
+  useEffect(() => onAuthStateChanged(auth, setUser), []);
 
   useEffect(() => {
-    if (!user) {
-      setEvents([]);
-      return;
-    }
-
+    if (!user) return;
+    const col = collection(db, "users", user.uid, "events");
     const now = new Date();
 
-    const q = query(
-      collection(db, "users", user.uid, "events"),
-      where("start", ">=", now),
-      orderBy("start", "asc"),
-      limit(5) // show next 5 events
-    );
+    const constraints = [where("start", ">=", now), orderBy("start", "asc"), limit(20)];
+    if (calendarFilter !== "all") {
+      constraints.unshift(where("calendarId", "==", calendarFilter));
+    }
 
+    const q = query(col, ...constraints);
     const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setEvents(items);
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+      setEvents(list);
+    }, (err) => {
+      console.error("Upcoming query failed", err);
     });
 
-    return () => unsub();
-  }, [user]);
+    return () => unsub && unsub();
+  }, [user, calendarFilter]);
 
-  if (!user) {
-    return <p className="text-gray-700">Please sign in to see events.</p>;
-  }
-
-  if (events.length === 0) {
-    return <p className="text-gray-700">No upcoming events.</p>;
-  }
+  if (!user) return <p className="text-gray-700">Sign in to see upcoming events.</p>;
+  if (events.length === 0) return <p className="text-gray-700">No upcoming events.</p>;
 
   return (
-    <ul className="space-y-2">
+    <div className="space-y-2">
       {events.map((e) => (
-        <li key={e.id} className="rounded-lg border bg-white px-4 py-3">
-          <div className="font-medium text-gray-900">{e.summary}</div>
+        <div key={e.id} className="rounded border p-3 bg-gray-50">
+          <div className="font-semibold text-gray-800">{e.summary}</div>
           <div className="text-sm text-gray-700">
-            {e.start?.toDate?.().toLocaleString?.() || ""}
-            {e.end?.toDate && " → " + e.end.toDate().toLocaleString()}
+            {e.start?.toDate?.().toLocaleString?.() ?? ""}
+            {e.end?.toDate?.() ? " → " + e.end.toDate().toLocaleString?.() : ""}
           </div>
-          {e.location && (
-            <div className="text-sm text-gray-700">Room: {e.location}</div>
+          {e.calendarId && (
+            <div className="text-xs text-gray-600 mt-1">
+              Calendar: {e.calendarId}
+            </div>
           )}
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
