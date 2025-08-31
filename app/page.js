@@ -7,6 +7,7 @@ import TodoList from "@/components/TodoList";
 import Upcoming from "@/components/Upcoming";
 import AddEvent from "@/components/AddEvent";
 import CalendarTabs from "@/components/CalendarTabs";
+import CalendarMonth from "@/components/CalendarMonth";
 
 export default function Home() {
   const [calendarFilter, setCalendarFilter] = useState("all");
@@ -35,6 +36,19 @@ export default function Home() {
         <section className="w-full">
           <CalendarTabs value={calendarFilter} onChange={setCalendarFilter} />
         </section>
+        
+        {/* Tabs */}
+        <section className="w-full">
+          <CalendarTabs value={calendarFilter} onChange={setCalendarFilter} />
+        </section>
+
+        {/* Month calendar (filtered) */}
+        <section className="w-full">
+          <h2 className="text-2xl font-semibold text-gray-800 mb-2">Calendar</h2>
+          <CalendarMonth calendarFilter={calendarFilter} />
+        </section>
+
+        {/* Upcoming (filtered or all) */}
 
         {/* Upcoming (filtered or all) */}
         <section className="w-full">
