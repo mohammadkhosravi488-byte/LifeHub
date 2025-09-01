@@ -1,19 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
-
 export default function CalendarTabs({
   value = "main",
   onChange = () => {},
-  calendars = [], // [{id, name}]
+  calendars = [], // optional external list
+  onCalendarsDiscovered = () => {},
 }) {
-  const tabs = useMemo(() => {
-    const base = [{ id: "main", name: "Main" }];
-    const extras = (calendars || [])
-      .filter((c) => c && c.id && c.id !== "main")
-      .map((c) => ({ id: c.id, name: c.name || c.id }));
-    return [...base, ...extras];
-  }, [calendars]);
+  // page will pass us discovered calendars from CalendarDay via onCalendarsDiscovered.
+  const tabs = [{ id: "main", name: "Main" }, ...calendars];
 
   return (
     <div className="flex items-center gap-2">

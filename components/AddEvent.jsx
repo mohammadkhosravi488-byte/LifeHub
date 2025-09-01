@@ -1,99 +1,156 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import { subscribeCalendars } from "@/lib/calendars";
+import { addDoc, collection, serverTimestamp, Timestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
-export default function AddEvent({ calendarFilter = "all" }) {
+export default function AddEvent({
+  defaultCalendarId = "main",
+  defaultDate = new Date(),
+  onClose = () => {},
+  onCreated = () => {},
+}) {
   const [user, setUser] = useState(null);
-  const [summary, setSummary] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
+
+  const [title, setTitle] = useState("");
+  const [calendarId, setCalendarId] = useState(defaultCalendarId);
+  const [allDay, setAllDay] = useState(false);
+  const [date, setDate] = useState(defaultDate.toISOString().slice(0, 10));
+  const [start, setStart] = useState("09:00");
+  const [end, setEnd] = useState("10:00");
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [calendars, setCalendars] = useState([]);
-  const [calendarId, setCalendarId] = useState(calendarFilter === "all" ? "personal" : calendarFilter);
 
-  useEffect(() => onAuthStateChanged(auth, setUser), []);
-  useEffect(() => {
+  async function save() {
     if (!user) return;
-    const unsub = subscribeCalendars(user.uid, setCalendars);
-    return () => unsub && unsub();
-  }, [user]);
+    if (!title.trim()) return;
 
-  useEffect(() => {
-    if (calendarFilter !== "all") setCalendarId(calendarFilter);
-  }, [calendarFilter]);
+    const d = new Date(date + "T00:00:00");
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
 
-  const save = async (e) => {
-    e.preventDefault();
-    if (!user || !summary || !start || !end || !calendarId) return;
+    const startDate = new Date(d);
+    startDate.setHours(allDay ? 0 : sh, allDay ? 0 : sm, 0, 0);
+
+    const endDate = new Date(d);
+    endDate.setHours(allDay ? 23 : eh, allDay ? 59 : em, allDay ? 59 : 0, allDay ? 999 : 0);
 
     setSaving(true);
     try {
       await addDoc(collection(db, "users", user.uid, "events"), {
-        summary,
-        start: Timestamp.fromDate(new Date(start)),
-        end: Timestamp.fromDate(new Date(end)),
-        calendarId,
+        summary: title.trim(),
+        calendarId: calendarId || "main",
+        allDay: !!allDay,
+        location: location || "",
+        description: notes || "",
+        start: Timestamp.fromDate(startDate),
+        end: Timestamp.fromDate(endDate),
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         source: "manual",
       });
-      setSummary("");
-      setStart("");
-      setEnd("");
-      alert("Event added ✔");
-    } catch (err) {
-      console.error(err);
-      alert("Could not save event.");
-    } finally {
       setSaving(false);
+      setTitle("");
+      onCreated();
+    } catch (e) {
+      console.error(e);
+      setSaving(false);
+      alert("Failed to save event.");
     }
-  };
+  }
 
-  if (!user) return <p className="text-gray-700">Sign in to add events.</p>;
+  if (!user) return null;
 
   return (
-    <form onSubmit={save} className="w-full max-w-md space-y-3">
-      <div className="flex gap-3">
-        <select
-          value={calendarId}
-          onChange={(e) => setCalendarId(e.target.value)}
-          className="w-40 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+    <div className="rounded-xl border border-gray-200 p-3 bg-white">
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <input
+            className="w-full h-9 rounded-lg border border-gray-300 px-3 text-sm"
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <label className="text-sm text-gray-600 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allDay}
+                onChange={(e) => setAllDay(e.target.checked)}
+              />
+              All-day
+            </label>
+            <select
+              className="h-9 rounded-lg border border-gray-300 px-2 text-sm"
+              value={calendarId}
+              onChange={(e) => setCalendarId(e.target.value)}
+            >
+              <option value="main">Main</option>
+            </select>
+          </div>
+          <input
+            type="text"
+            className="w-full h-9 rounded-lg border border-gray-300 px-3 text-sm"
+            placeholder="Location"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <input
+            type="date"
+            className="w-full h-9 rounded-lg border border-gray-300 px-3 text-sm"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          {!allDay && (
+            <div className="flex gap-2">
+              <input
+                type="time"
+                className="h-9 rounded-lg border border-gray-300 px-2 text-sm"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+              <input
+                type="time"
+                className="h-9 rounded-lg border border-gray-300 px-2 text-sm"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
+          )}
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border border-gray-300 px-3 text-sm py-2"
+            placeholder="Notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-60"
+          disabled={saving}
+          onClick={save}
         >
-          {calendars.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <input
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          placeholder="Event title"
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          className="h-9 px-3 rounded-lg border border-gray-300 bg-white text-sm"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
       </div>
-      <div className="flex gap-3">
-        <input
-          type="datetime-local"
-          value={start}
-          onChange={(e) => setStart(e.target.value)}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <input
-          type="datetime-local"
-          value={end}
-          onChange={(e) => setEnd(e.target.value)}
-          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={saving}
-        className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
-      >
-        {saving ? "Saving…" : "Add Event"}
-      </button>
-    </form>
+    </div>
   );
 }

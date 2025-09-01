@@ -1,91 +1,74 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { auth, googleProvider } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 
-function initialFrom(nameOrEmail) {
-  if (!nameOrEmail) return "?";
-  const c = nameOrEmail.trim()[0];
-  return (c || "?").toUpperCase();
-}
-
 export default function AuthButtons() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
-
-  const handleSignIn = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (e) {
-      console.error("Sign-in failed:", e);
-      alert("Sign-in failed. Please try again.");
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.error("Sign-out failed:", e);
-      alert("Sign-out failed. Please try again.");
-    }
-  };
-
-  if (loading) {
-    return <div className="h-9 w-28 rounded-md bg-gray-200 animate-pulse" />;
-  }
 
   if (!user) {
     return (
       <button
-        onClick={handleSignIn}
-        className="px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+        onClick={() => signInWithPopup(auth, googleProvider)}
+        className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
       >
-        Sign in
+        Sign in with Google
       </button>
     );
   }
 
-  const firstName = user?.displayName?.split(" ")[0] ?? "You";
-  const avatarUrl = user?.photoURL ?? null;
-  const fallbackLetter = initialFrom(user?.displayName || user?.email);
+  const name = user.displayName || user.email || "User";
+  const photo = user.photoURL || "";
 
   return (
-    <div className="flex items-center gap-3">
-      <Link href="/settings" className="inline-flex items-center gap-2 group">
-        <span className="text-sm font-semibold text-gray-800 group-hover:underline">
-          {`Hello ${firstName}`}
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-300 bg-white"
+        aria-expanded={open}
+      >
+        <span className="text-sm font-semibold text-gray-700">
+          Hello {name.split(" ")[0]}
         </span>
-        {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+        {photo ? (
           <img
-            src={avatarUrl}
-            alt="Profile"
-            className="h-9 w-9 rounded-full border border-gray-200 object-cover"
+            src={photo}
+            alt="avatar"
+            className="w-8 h-8 rounded-full object-cover"
           />
         ) : (
-          <div className="h-9 w-9 rounded-full border border-gray-200 bg-gray-100 grid place-items-center text-sm text-gray-600">
-            {fallbackLetter}
-          </div>
+          <div className="w-8 h-8 rounded-full bg-gray-200" />
         )}
-      </Link>
-
-      <button
-        onClick={handleSignOut}
-        className="text-sm text-gray-600 hover:underline"
-      >
-        Sign out
       </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-40 rounded-lg border border-gray-200 bg-white shadow">
+          <Link
+            href="/settings"
+            className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => setOpen(false)}
+          >
+            Settings
+          </Link>
+          <button
+            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => {
+              setOpen(false);
+              signOut(auth);
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }

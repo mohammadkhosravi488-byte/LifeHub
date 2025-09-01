@@ -3,58 +3,49 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 
 import AuthButtons from "@/components/AuthButtons";
 import CalendarTabs from "@/components/CalendarTabs";
+import CalendarDay from "@/components/CalendarDay";
 import Upcoming from "@/components/Upcoming";
 import TodoList from "@/components/TodoList";
+import AIConsole from "@/components/AIConsole";
 
 export default function Home() {
-  // auth
   const [user, setUser] = useState(null);
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  // calendars (Main + any user-created)
-  const [calendars, setCalendars] = useState([]);
-  useEffect(() => {
-    if (!user) return setCalendars([]);
-    const ref = collection(db, "users", user.uid, "calendars");
-    // order by name so they render stable
-    const qref = query(ref, orderBy("name", "asc"));
-    const unsub = onSnapshot(qref, (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setCalendars(rows);
-    });
-    return () => unsub();
-  }, [user]);
-
-  // tabs
-  const [calendarFilter, setCalendarFilter] = useState("main");
-
-  // search & filter
+  // Tabs & filters
+  const [calendarFilter, setCalendarFilter] = useState("main"); // "main" is default
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select filter
+  const [availableCalendars, setAvailableCalendars] = useState([]); // UI list shown under Filters
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
 
-  // computed list of selectable calendars (never duplicates Main)
+  // Keep “Main” always in the list
   const selectableCalendars = useMemo(() => {
-    return [
-      { id: "main", name: "Main" },
-      ...calendars
-        .filter((c) => c && c.id && c.id !== "main")
-        .map((c) => ({ id: c.id, name: c.name || c.id })),
-    ];
-  }, [calendars]);
+    const uniq = new Map();
+    uniq.set("main", { id: "main", name: "Main" });
+    (availableCalendars || []).forEach((c) => {
+      if (c?.id && c.id !== "main") uniq.set(c.id, { id: c.id, name: c.name || c.id });
+    });
+    return Array.from(uniq.values());
+  }, [availableCalendars]);
 
   const toggleSelected = (id) => {
     setSelectedCalendarIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setSelectedCalendarIds([]);
+    setFiltersOpen(false);
   };
 
   return (
@@ -72,19 +63,18 @@ export default function Home() {
 
         {/* Control strip */}
         <div className="mt-6 flex items-center justify-between">
-          {/* Tabs */}
           <CalendarTabs
             value={calendarFilter}
             onChange={setCalendarFilter}
-            calendars={calendars} // only shows Main by default; user-created appear as you add them
+            // Let CalendarDay tell us which calendars exist so filters show real chips
+            onCalendarsDiscovered={setAvailableCalendars}
           />
 
-          {/* Right controls: Import + Search + Filter */}
           <div className="flex items-center gap-3">
             <Link
               href="/import"
               className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
-              title="Import .ics to Main (or selected calendar when editor is ready)"
+              title="Import .ics"
             >
               Import
             </Link>
@@ -116,51 +106,53 @@ export default function Home() {
             id="filters-panel"
             className="mt-3 p-3 bg-white border border-gray-200 rounded-xl"
           >
-            <div className="text-sm font-semibold text-gray-700 mb-2">
-              Calendars
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {selectableCalendars.map((c) => {
-                const active = selectedCalendarIds.includes(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => toggleSelected(c.id)}
-                    className={[
-                      "px-3 h-8 rounded-full border text-sm",
-                      active
-                        ? "border-indigo-400 bg-indigo-50"
-                        : "border-gray-300 bg-white",
-                    ].join(" ")}
-                  >
-                    {c.name}
-                  </button>
-                );
-              })}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">
+                  Calendars
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectableCalendars.map((c) => {
+                    const active = selectedCalendarIds.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => toggleSelected(c.id)}
+                        className={[
+                          "px-3 h-8 rounded-full border text-sm",
+                          active
+                            ? "border-indigo-400 bg-indigo-50"
+                            : "border-gray-300 bg-white",
+                        ].join(" ")}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <button
+                onClick={clearFilters}
+                className="h-8 px-3 rounded-md border border-gray-300 text-sm bg-white"
+              >
+                Clear
+              </button>
             </div>
           </div>
         )}
 
-        {/* Main layout */}
+        {/* Layout */}
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left / center: calendar + upcoming */}
+          {/* Left/Center: Calendar + Upcoming */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Calendar canvas placeholder (month/day view can replace this) */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 min-h-[420px]">
-              <div className="text-lg font-semibold text-gray-800 mb-2">
-                Calendar — {calendarFilter === "main" ? "Main" : calendarFilter}
-              </div>
-              <p className="text-gray-600 text-sm">
-                (Visual day/week/month canvas goes here. For now, use the
-                “Upcoming” list below; it’s filtered by your tab + filters.)
-              </p>
-            </div>
+            <CalendarDay
+              calendarFilter={calendarFilter}
+              selectedCalendarIds={selectedCalendarIds}
+              onCalendarsDiscovered={setAvailableCalendars}
+            />
 
-            {/* Upcoming */}
             <div className="bg-white border border-gray-200 rounded-2xl p-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Upcoming
-              </h2>
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Upcoming</h2>
               <Upcoming
                 calendarFilter={calendarFilter}
                 search={search}
@@ -169,8 +161,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right: To-dos */}
+          {/* Right: AI + To-dos */}
           <div className="space-y-6">
+            <AIConsole />
             <div className="bg-white border border-gray-200 rounded-2xl p-4">
               <h2 className="text-xl font-semibold text-gray-800 mb-2">
                 Your To-Dos

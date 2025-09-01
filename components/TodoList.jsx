@@ -25,7 +25,7 @@ export default function TodoList({
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
@@ -45,7 +45,10 @@ export default function TodoList({
     return items.filter((t) => {
       const calId = t.calendarId || "main";
 
+      // Tab filter (keep default "main" simple)
       if (calendarFilter !== "all" && calId !== calendarFilter) return false;
+
+      // Multi-select chips (only apply if user actually picked some)
       if (selected.size > 0 && !selected.has(calId)) return false;
 
       if (textq) {
@@ -102,6 +105,7 @@ export default function TodoList({
           Add
         </button>
       </div>
+
       <ul className="divide-y divide-gray-200">
         {visible.map((t) => (
           <li key={t.id} className="py-2 flex items-center justify-between">
