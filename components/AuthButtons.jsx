@@ -1,111 +1,90 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { auth, googleProvider, db } from "@/lib/firebase";
-import {
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signOut,
-  onAuthStateChanged,
-} from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, googleProvider } from "@/lib/firebase";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+
+function initialFrom(nameOrEmail) {
+  if (!nameOrEmail) return "?";
+  const c = nameOrEmail.trim()[0];
+  return (c || "?").toUpperCase();
+}
 
 export default function AuthButtons() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Keep UI in sync with auth; also handle redirect-based login and write profile
   useEffect(() => {
-    // If a previous attempt fell back to redirect, resolve it silently
-    getRedirectResult(auth).catch(() => {});
-
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-
-      // Create/update basic user profile for sharing features
-      if (u) {
-        try {
-          await setDoc(
-            doc(db, "profiles", u.uid),
-            {
-              uid: u.uid,
-              email: u.email || "",
-              displayName: u.displayName || "",
-              photoURL: u.photoURL || "",
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        } catch (e) {
-          console.error("Failed to upsert profile:", e);
-        }
-      }
+      setLoading(false);
     });
-
     return () => unsub();
   }, []);
 
   const handleSignIn = async () => {
-    setLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (e) {
-      // Popup may be blocked — fall back to redirect
-      try {
-        await signInWithRedirect(auth, googleProvider);
-      } catch (err) {
-        console.error("Sign-in failed:", err);
-        alert("Google Sign-in failed. Check console for details.");
-      }
-    } finally {
-      setLoading(false);
+      console.error("Sign-in failed:", e);
+      alert("Sign-in failed. Please try again.");
     }
   };
 
   const handleSignOut = async () => {
-    setLoading(true);
     try {
       await signOut(auth);
     } catch (e) {
       console.error("Sign-out failed:", e);
-      alert("Sign-out failed. See console for details.");
-    } finally {
-      setLoading(false);
+      alert("Sign-out failed. Please try again.");
     }
   };
+
+  if (loading) {
+    return <div className="h-9 w-28 rounded-md bg-gray-200 animate-pulse" />;
+  }
 
   if (!user) {
     return (
       <button
         onClick={handleSignIn}
-        disabled={loading}
-        className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:opacity-90 disabled:opacity-60"
+        className="px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
       >
-        {loading ? "Signing in…" : "Sign in with Google"}
+        Sign in
       </button>
     );
   }
 
+  const firstName = user?.displayName?.split(" ")[0] ?? "You";
+  const avatarUrl = user?.photoURL ?? null;
+  const fallbackLetter = initialFrom(user?.displayName || user?.email);
+
   return (
     <div className="flex items-center gap-3">
-      {user.photoURL ? (
-        <img
-          src={user.photoURL}
-          alt="avatar"
-          className="w-8 h-8 rounded-full"
-          referrerPolicy="no-referrer"
-        />
-      ) : null}
-      <span className="text-sm font-medium text-gray-800">
-        {user.displayName || user.email}
-      </span>
+      <Link href="/settings" className="inline-flex items-center gap-2 group">
+        <span className="text-sm font-semibold text-gray-800 group-hover:underline">
+          {`Hello ${firstName}`}
+        </span>
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt="Profile"
+            className="h-9 w-9 rounded-full border border-gray-200 object-cover"
+          />
+        ) : (
+          <div className="h-9 w-9 rounded-full border border-gray-200 bg-gray-100 grid place-items-center text-sm text-gray-600">
+            {fallbackLetter}
+          </div>
+        )}
+      </Link>
+
       <button
         onClick={handleSignOut}
-        disabled={loading}
-        className="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:opacity-60"
+        className="text-sm text-gray-600 hover:underline"
       >
-        {loading ? "Signing out…" : "Sign out"}
+        Sign out
       </button>
     </div>
   );
