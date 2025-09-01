@@ -1,120 +1,142 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   addDoc,
   serverTimestamp,
   onSnapshot,
-  orderBy,
   query,
+  orderBy,
+  updateDoc,
   doc,
   deleteDoc,
-  updateDoc,
 } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 
-export default function TodoList() {
+export default function TodoList({
+  calendarFilter = "main",
+  search = "",
+  selectedCalendarIds = [],
+}) {
   const [user, setUser] = useState(null);
   const [text, setText] = useState("");
-  const [todos, setTodos] = useState([]);
+  const [items, setItems] = useState([]);
 
-  // Watch auth state
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
   }, []);
 
-  // Watch the user's todos in real-time
   useEffect(() => {
-    if (!user) {
-      setTodos([]);
-      return;
-    }
-    const q = query(
-      collection(db, "users", user.uid, "todos"),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodos(items);
+    if (!user) return setItems([]);
+    const ref = collection(db, "users", user.uid, "tasks");
+    const qref = query(ref, orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(qref, (snap) => {
+      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, [user]);
 
-  const addTodo = async (e) => {
-    e.preventDefault();
-    const t = text.trim();
-    if (!user || !t) return;
-    await addDoc(collection(db, "users", user.uid, "todos"), {
-      text: t,
-      done: false,
+  const visible = useMemo(() => {
+    const textq = search.trim().toLowerCase();
+    const selected = new Set(selectedCalendarIds || []);
+    return items.filter((t) => {
+      const calId = t.calendarId || "main";
+
+      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
+      if (selected.size > 0 && !selected.has(calId)) return false;
+
+      if (textq) {
+        const hay = `${t.title || ""}`.toLowerCase();
+        if (!hay.includes(textq)) return false;
+      }
+      return true;
+    });
+  }, [items, calendarFilter, search, selectedCalendarIds]);
+
+  async function addTask() {
+    if (!user || !text.trim()) return;
+    const ref = collection(db, "users", user.uid, "tasks");
+    await addDoc(ref, {
+      title: text.trim(),
+      completed: false,
+      calendarId: calendarFilter || "main",
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
     setText("");
-  };
+  }
 
-  const toggleDone = async (id, done) => {
+  async function toggleTask(t) {
     if (!user) return;
-    await updateDoc(doc(db, "users", user.uid, "todos", id), { done: !done });
-  };
+    await updateDoc(doc(db, "users", user.uid, "tasks", t.id), {
+      completed: !t.completed,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
-  const removeTodo = async (id) => {
+  async function removeTask(t) {
     if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "todos", id));
-  };
+    await deleteDoc(doc(db, "users", user.uid, "tasks", t.id));
+  }
 
   if (!user) {
-    return (
-      <p className="text-gray-600 text-sm">
-        Sign in to create your to-dos.
-      </p>
-    );
+    return <p className="text-gray-600 text-sm">Sign in to manage to-dos.</p>;
   }
 
   return (
-    <div className="w-full max-w-md space-y-4">
-      <form onSubmit={addTodo} className="flex gap-2">
+    <div>
+      <div className="flex gap-2 mb-3">
         <input
-  value={text}
-  onChange={(e) => setText(e.target.value)}
-  placeholder="Add a to-do…"
-  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-/>
-
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a task…"
+          className="flex-1 h-10 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
+        />
         <button
-          type="submit"
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium"
+          onClick={addTask}
+          className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
         >
           Add
         </button>
-      </form>
-
-      <ul className="space-y-2">
-  {todos.map((t) => (
-    <li
-      key={t.id}
-      className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3 hover:bg-gray-100 transition"
-    >
-      <button
-        onClick={() => toggleDone(t.id, t.done)}
-        className={`text-left flex-1 ${
-          t.done ? "line-through text-gray-400" : "text-gray-800"
-        }`}
-      >
-        {t.text}
-      </button>
-      <button
-        onClick={() => removeTodo(t.id)}
-        className="text-red-500 text-sm hover:underline"
-      >
-        Delete
-      </button>
-    </li>
-  ))}
-</ul>
-
+      </div>
+      <ul className="divide-y divide-gray-200">
+        {visible.map((t) => (
+          <li key={t.id} className="py-2 flex items-center justify-between">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!t.completed}
+                onChange={() => toggleTask(t)}
+              />
+              <span
+                className={[
+                  "text-sm",
+                  t.completed ? "line-through text-gray-400" : "text-gray-900",
+                ].join(" ")}
+              >
+                {t.title}
+              </span>
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">
+                {t.calendarId || "main"}
+              </span>
+              <button
+                className="text-xs text-red-600"
+                onClick={() => removeTask(t)}
+              >
+                delete
+              </button>
+            </div>
+          </li>
+        ))}
+        {visible.length === 0 && (
+          <li className="py-2 text-sm text-gray-500">Nothing matches.</li>
+        )}
+      </ul>
     </div>
   );
 }

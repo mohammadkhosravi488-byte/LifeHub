@@ -1,58 +1,118 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection, query, where, orderBy, limit, onSnapshot,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  Timestamp,
 } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
-export default function Upcoming({ calendarFilter = "all" }) {
+export default function Upcoming({
+  calendarFilter = "main",
+  search = "",
+  selectedCalendarIds = [],
+}) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
 
-  useEffect(() => onAuthStateChanged(auth, setUser), []);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const col = collection(db, "users", user.uid, "events");
+    if (!user) return setEvents([]);
+
+    // pull the next 50 upcoming items by start time only (avoids composite index)
     const now = new Date();
+    const ref = collection(db, "users", user.uid, "events");
+    const qref = query(
+      ref,
+      where("start", ">=", Timestamp.fromDate(now)),
+      orderBy("start", "asc"),
+      limit(50)
+    );
 
-    const constraints = [where("start", ">=", now), orderBy("start", "asc"), limit(20)];
-    if (calendarFilter !== "all") {
-      constraints.unshift(where("calendarId", "==", calendarFilter));
-    }
+    const unsub = onSnapshot(
+      qref,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setEvents(rows);
+      },
+      (err) => {
+        console.error("Upcoming query failed", err);
+      }
+    );
 
-    const q = query(col, ...constraints);
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
-      setEvents(list);
-    }, (err) => {
-      console.error("Upcoming query failed", err);
+    return () => unsub();
+  }, [user]);
+
+  const visible = useMemo(() => {
+    const text = search.trim().toLowerCase();
+    const selected = new Set(selectedCalendarIds || []);
+
+    return events.filter((ev) => {
+      const calId = ev.calendarId || "main";
+
+      // filter by tab
+      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
+
+      // filter by multi-select (if any chosen)
+      if (selected.size > 0 && !selected.has(calId)) return false;
+
+      // text search
+      if (text) {
+        const hay =
+          `${ev.summary || ""} ${ev.description || ""} ${ev.location || ""}`.toLowerCase();
+        if (!hay.includes(text)) return false;
+      }
+
+      return true;
     });
+  }, [events, calendarFilter, search, selectedCalendarIds]);
 
-    return () => unsub && unsub();
-  }, [user, calendarFilter]);
+  if (!user) {
+    return <p className="text-gray-600 text-sm">Sign in to see upcoming.</p>;
+  }
 
-  if (!user) return <p className="text-gray-700">Sign in to see upcoming events.</p>;
-  if (events.length === 0) return <p className="text-gray-700">No upcoming events.</p>;
+  if (visible.length === 0) {
+    return <p className="text-gray-600 text-sm">No upcoming items match.</p>;
+  }
 
   return (
-    <div className="space-y-2">
-      {events.map((e) => (
-        <div key={e.id} className="rounded border p-3 bg-gray-50">
-          <div className="font-semibold text-gray-800">{e.summary}</div>
-          <div className="text-sm text-gray-700">
-            {e.start?.toDate?.().toLocaleString?.() ?? ""}
-            {e.end?.toDate?.() ? " → " + e.end.toDate().toLocaleString?.() : ""}
-          </div>
-          {e.calendarId && (
-            <div className="text-xs text-gray-600 mt-1">
-              Calendar: {e.calendarId}
+    <ul className="divide-y divide-gray-200">
+      {visible.map((ev) => {
+        const start = ev.start?.toDate?.() || new Date();
+        const end = ev.end?.toDate?.();
+        const time =
+          ev.allDay
+            ? "All day"
+            : `${start.toLocaleDateString()} ${start.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}${end ? " – " + end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}`;
+
+        const calId = ev.calendarId || "main";
+
+        return (
+          <li key={ev.id} className="py-2 flex items-start justify-between gap-3">
+            <div>
+              <div className="font-medium text-gray-900">{ev.summary || "(no title)"}</div>
+              <div className="text-xs text-gray-500">{time}</div>
+              {ev.location && (
+                <div className="text-xs text-gray-500">📍 {ev.location}</div>
+              )}
             </div>
-          )}
-        </div>
-      ))}
-    </div>
+            <div className="text-xs text-gray-500">{calId}</div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

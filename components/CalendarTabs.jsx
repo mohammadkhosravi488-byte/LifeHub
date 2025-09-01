@@ -2,18 +2,11 @@
 
 import { useMemo } from "react";
 
-/**
- * CalendarTabs
- * - Shows only "Main" by default.
- * - If you later pass extra calendars (Family / Study / Assessments), they’ll appear.
- * - Calls onChange(value) when a tab is clicked.
- */
 export default function CalendarTabs({
   value = "main",
   onChange = () => {},
-  calendars = [], // optional: [{id:"family", name:"Family"}, ...]
+  calendars = [], // [{id, name}]
 }) {
-  // Ensure we always have "Main" first
   const tabs = useMemo(() => {
     const base = [{ id: "main", name: "Main" }];
     const extras = (calendars || [])

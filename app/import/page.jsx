@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { parseIcs } from "@/lib/ics";
 import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, serverTimestamp, Timestamp, collection, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 export default function ImportPage() {
@@ -12,25 +12,10 @@ export default function ImportPage() {
   const [saving, setSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
 
-  const [calendars, setCalendars] = useState([]);
-  const [calendarId, setCalendarId] = useState("timetable");
-
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(collection(db, "users", user.uid, "calendars"), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }));
-      setCalendars(list);
-      if (list.length && !list.find(c=>c.id===calendarId)) {
-        setCalendarId(list[0].id);
-      }
-    });
-    return () => unsub();
-  }, [user]);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -47,7 +32,7 @@ export default function ImportPage() {
   };
 
   const saveAll = async () => {
-    if (!user || events.length === 0 || !calendarId) return;
+    if (!user || events.length === 0) return;
     setSaving(true);
     let success = 0;
     for (const ev of events) {
@@ -62,7 +47,7 @@ export default function ImportPage() {
             end: Timestamp.fromDate(ev.end),
             updatedAt: serverTimestamp(),
             source: "ics",
-            calendarId,
+            calendarId: "main", // default to Main
           },
           { merge: true }
         );
@@ -79,46 +64,36 @@ export default function ImportPage() {
   if (!user) {
     return (
       <main className="max-w-xl mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-3">Import Sentral Calendar (.ics)</h1>
+        <h1 className="text-2xl font-bold mb-3">Import Calendar (.ics)</h1>
         <p className="text-gray-800">Please sign in first.</p>
       </main>
     );
   }
 
   return (
-    <main className="max-w-2xl mx-auto p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Import Sentral Calendar (.ics)</h1>
-
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-gray-700">Import into:</label>
-        <select
-          value={calendarId}
-          onChange={(e) => setCalendarId(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
-        >
-          {calendars.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
-
+    <main className="max-w-2xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-4">Import Calendar (.ics)</h1>
       <input
         type="file"
         accept=".ics,text/calendar"
         onChange={handleFile}
-        className="mb-2"
+        className="mb-4"
       />
-
       {events.length > 0 && (
-        <div>
+        <div className="mb-4">
           <p className="text-gray-800">
             Parsed <strong>{events.length}</strong> events.
-            {savedCount > 0 && <> Saved: <strong>{savedCount}</strong></>}
+            {savedCount > 0 && (
+              <>
+                {" "}
+                Saved: <strong>{savedCount}</strong>
+              </>
+            )}
           </p>
           <button
             onClick={saveAll}
             disabled={saving}
-            className="mt-2 px-4 py-2 rounded-lg bg-blue-600 text-white font-medium disabled:opacity-60"
+            className="mt-2 px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium disabled:opacity-60"
           >
             {saving ? "Saving..." : "Save to my calendar"}
           </button>
