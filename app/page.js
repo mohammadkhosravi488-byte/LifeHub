@@ -11,9 +11,12 @@ import TodoList from "@/components/TodoList";
 import AuthButtons from "@/components/AuthButtons";
 import AIConsole from "@/components/AIConsole";
 import { useState } from "react";
+import FilterSheet from "@/components/FilterSheet";
 
 export default function Home() {
   const [calendarFilter, setCalendarFilter] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 text-[var(--ink)]">
@@ -22,9 +25,9 @@ export default function Home() {
       <ControlStrip
         value={calendarFilter}
         onChange={setCalendarFilter}
-        onAddCalendar={() => alert("Add Calendar dialog (coming soon)")}
+        onAddCalendar={() => setAddOpen(true)}
         onSearchOpen={() => {}}
-        onFilterOpen={() => alert("Filters (coming soon)")}
+        onFilterOpen={() => setFiltersOpen(true)}
       />
 
       <div className="max-w-[1600px] mx-auto px-6 mt-6 grid grid-cols-1 xl:grid-cols-[60px_1fr_560px] gap-6">
@@ -65,4 +68,6 @@ export default function Home() {
       <div className="h-8" />
     </main>
   );
+  
+<FilterSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} />
 }
