@@ -11,22 +11,52 @@ import CalendarDay from "@/components/CalendarDay";
 import Upcoming from "@/components/Upcoming";
 import TodoList from "@/components/TodoList";
 import AIConsole from "@/components/AIConsole";
+import CalendarMonth from "@/components/CalendarMonth";
+import CalendarYear from "@/components/CalendarYear";
+import ViewToggle from "@/components/ViewToggle";
+
+import ConsoleBoard from "@/components/ConsoleBoard";
+import ConsoleCard from "@/components/ConsoleCard";
 
 export default function Home() {
   const [user, setUser] = useState(null);
+
+  // View mode for calendar
+  const [viewMode, setViewMode] = useState("day"); // "day" | "month" | "year"
+  const cycleView = () =>
+    setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"));
+
+  // Tabs / filters / search
+  const [calendarFilter, setCalendarFilter] = useState("main"); // default Main only
+  const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [availableCalendars, setAvailableCalendars] = useState([]); // discovered from DB
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
+
+  // Draggable board order (persist in localStorage)
+  const defaultOrder = ["calendar", "upcoming", "ai", "todos"];
+  const [order, setOrder] = useState(() => {
+    if (typeof window === "undefined") return defaultOrder;
+    try {
+      const saved = JSON.parse(localStorage.getItem("lh_board_order"));
+      return Array.isArray(saved) && saved.length ? saved : defaultOrder;
+    } catch {
+      return defaultOrder;
+    }
+  });
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  // Tabs & filters
-  const [calendarFilter, setCalendarFilter] = useState("main"); // "main" is default
-  const [search, setSearch] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [availableCalendars, setAvailableCalendars] = useState([]); // UI list shown under Filters
-  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("lh_board_order", JSON.stringify(order));
+    }
+  }, [order]);
 
-  // Keep “Main” always in the list
+  // Keep “Main” always present in filters
   const selectableCalendars = useMemo(() => {
     const uniq = new Map();
     uniq.set("main", { id: "main", name: "Main" });
@@ -48,6 +78,103 @@ export default function Home() {
     setFiltersOpen(false);
   };
 
+  // ----- Build the board items (cards) -----
+  const items = useMemo(() => {
+    const cards = {
+      calendar: {
+        id: "calendar",
+        spanLg: 2,
+        height: 720,
+        render: ({ dragHandleProps }) => (
+          <ConsoleCard
+            title="Calendar"
+            subtitle={viewMode === "day" ? "Day view" : viewMode === "month" ? "Month view" : "Year view"}
+            height={720}
+            dragHandleProps={dragHandleProps}
+            rightSlot={
+              <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
+            }
+          >
+            {/* Inner body is scrollable already via ConsoleCard */}
+            {viewMode === "day" && (
+              <div className="min-h-[640px]">
+                <CalendarDay
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
+            )}
+            {viewMode === "month" && (
+              <div className="min-h-[640px]">
+                <CalendarMonth
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
+            )}
+            {viewMode === "year" && (
+              <div className="min-h-[640px]">
+                <CalendarYear
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
+            )}
+          </ConsoleCard>
+        ),
+      },
+
+      upcoming: {
+        id: "upcoming",
+        spanLg: 2,
+        height: 340,
+        render: ({ dragHandleProps }) => (
+          <ConsoleCard title="Upcoming" height={340} dragHandleProps={dragHandleProps}>
+            <Upcoming
+              calendarFilter={calendarFilter}
+              search={search}
+              selectedCalendarIds={selectedCalendarIds}
+            />
+          </ConsoleCard>
+        ),
+      },
+
+      ai: {
+        id: "ai",
+        spanLg: 1,
+        height: 780,
+        render: ({ dragHandleProps }) => (
+          <ConsoleCard title="AI Console" height={780} dragHandleProps={dragHandleProps}>
+            <AIConsole />
+          </ConsoleCard>
+        ),
+      },
+
+      todos: {
+        id: "todos",
+        spanLg: 1,
+        height: 360,
+        render: ({ dragHandleProps }) => (
+          <ConsoleCard title="Your To-Dos" height={360} dragHandleProps={dragHandleProps}>
+            <TodoList
+              calendarFilter={calendarFilter}
+              search={search}
+              selectedCalendarIds={selectedCalendarIds}
+            />
+          </ConsoleCard>
+        ),
+      },
+    };
+
+    // Keep unknown ids out; fall back to defaultOrder
+    const valid = order.filter((id) => cards[id]);
+    const list = (valid.length ? valid : defaultOrder).map((id) => cards[id]);
+    return list;
+  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="max-w-6xl mx-auto px-6">
@@ -62,119 +189,101 @@ export default function Home() {
         </div>
 
         {/* Control strip */}
-        <div className="mt-6 flex items-center justify-between">
-          <CalendarTabs
-            value={calendarFilter}
-            onChange={setCalendarFilter}
-            // Let CalendarDay tell us which calendars exist so filters show real chips
-            onCalendarsDiscovered={setAvailableCalendars}
-          />
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/import"
-              className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
-              title="Import .ics"
-            >
-              Import
-            </Link>
-
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="w-80 h-8 rounded-xl border border-gray-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
-              aria-label="Search"
-            />
-
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              aria-controls="filters-panel"
-              className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-sm"
-              title="Filters"
-            >
-              ⚙️
-            </button>
-          </div>
-        </div>
-
-        {/* Filters panel */}
-        {filtersOpen && (
-          <div
-            id="filters-panel"
-            className="mt-3 p-3 bg-white border border-gray-200 rounded-xl"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-gray-700 mb-2">
-                  Calendars
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectableCalendars.map((c) => {
-                    const active = selectedCalendarIds.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => toggleSelected(c.id)}
-                        className={[
-                          "px-3 h-8 rounded-full border text-sm",
-                          active
-                            ? "border-indigo-400 bg-indigo-50"
-                            : "border-gray-300 bg-white",
-                        ].join(" ")}
-                      >
-                        {c.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <button
-                onClick={clearFilters}
-                className="h-8 px-3 rounded-md border border-gray-300 text-sm bg-white"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Layout */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left/Center: Calendar + Upcoming */}
-          <div className="lg:col-span-2 space-y-6">
-            <CalendarDay
-              calendarFilter={calendarFilter}
-              selectedCalendarIds={selectedCalendarIds}
+        <div className="mt-6 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <CalendarTabs
+              value={calendarFilter}
+              onChange={setCalendarFilter}
               onCalendarsDiscovered={setAvailableCalendars}
             />
 
-            <div className="bg-white border border-gray-200 rounded-2xl p-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Upcoming</h2>
-              <Upcoming
-                calendarFilter={calendarFilter}
-                search={search}
-                selectedCalendarIds={selectedCalendarIds}
+            <div className="flex items-center gap-3">
+              <Link
+                href="/import"
+                className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
+                title="Import .ics"
+              >
+                Import
+              </Link>
+
+              <Link
+                href="/settings"
+                className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
+                title="Settings"
+              >
+                Settings
+              </Link>
+
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="w-80 h-8 rounded-xl border border-gray-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
+                aria-label="Search"
               />
+
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((v) => !v)}
+                aria-expanded={filtersOpen}
+                aria-controls="filters-panel"
+                className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-sm"
+                title="Filters"
+              >
+                ⚙️
+              </button>
             </div>
           </div>
 
-          {/* Right: AI + To-dos */}
-          <div className="space-y-6">
-            <AIConsole />
-            <div className="bg-white border border-gray-200 rounded-2xl p-4">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Your To-Dos
-              </h2>
-              <TodoList
-                calendarFilter={calendarFilter}
-                search={search}
-                selectedCalendarIds={selectedCalendarIds}
-              />
+          {/* Filters panel */}
+          {filtersOpen && (
+            <div
+              id="filters-panel"
+              className="p-3 bg-white border border-gray-200 rounded-xl"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-gray-700 mb-2">
+                    Calendars
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectableCalendars.map((c) => {
+                      const active = selectedCalendarIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => toggleSelected(c.id)}
+                          className={[
+                            "px-3 h-8 rounded-full border text-sm",
+                            active
+                              ? "border-indigo-400 bg-indigo-50"
+                              : "border-gray-300 bg-white",
+                          ].join(" ")}
+                        >
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={clearFilters}
+                  className="h-8 px-3 rounded-md border border-gray-300 text-sm bg-white"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* Draggable board */}
+        <div className="mt-6">
+          <ConsoleBoard
+            items={items}
+            onReorder={(ids) => setOrder(ids)}
+          />
         </div>
 
         <div className="h-10" />
