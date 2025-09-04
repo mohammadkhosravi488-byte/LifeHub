@@ -95,34 +95,33 @@ export default function Home() {
               <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
             }
           >
-            <ViewToggle
-              value={viewMode}
-              onChange={setViewMode}
-              onCycle={() =>
-                setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"))
-              }
-            />
-            {/* Where you currently render the calendar */}
-            {viewMode === "day" ? (
-              <CalendarDay
-                calendarFilter={calendarFilter}
-                selectedCalendarIds={selectedCalendarIds}
-                onCalendarsDiscovered={setAvailableCalendars}
-              />
-            ) : viewMode === "month" ? (
-              <CalendarMonth
-                date={today}
-                calendarFilter={calendarFilter}
-                selectedCalendarIds={selectedCalendarIds}
-                search={search}
-              />
-            ) : (
-              <CalendarYear
-                date={today}
-                calendarFilter={calendarFilter}
-                selectedCalendarIds={selectedCalendarIds}
-                search={search}
-              />
+            {/* Inner body is scrollable already via ConsoleCard */}
+            {viewMode === "day" && (
+              <div className="min-h-[640px]">
+                <CalendarDay
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
+            )}
+            {viewMode === "month" && (
+              <div className="min-h-[640px]">
+                <CalendarMonth
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
+            )}
+            {viewMode === "year" && (
+              <div className="min-h-[640px]">
+                <CalendarYear
+                  calendarFilter={calendarFilter}
+                  selectedCalendarIds={selectedCalendarIds}
+                  onCalendarsDiscovered={setAvailableCalendars}
+                />
+              </div>
             )}
           </ConsoleCard>
         ),
