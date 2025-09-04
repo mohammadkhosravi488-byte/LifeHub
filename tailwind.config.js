@@ -6,6 +6,16 @@ module.exports = {
     "./components/**/*.{js,jsx,ts,tsx}",
     "./pages/**/*.{js,jsx,ts,tsx}",
   ],
-  theme: { extend: {} },
+  theme: {
+    extend: {
+      colors: {
+        ink: "var(--ink)",
+        "ink-muted": "var(--ink-muted)",
+        "outline-neutral": "var(--outline-neutral)",
+        "card-bg": "var(--card-bg)",
+        bg: "var(--bg)",
+      },
+    },
+  },
   plugins: [],
 };

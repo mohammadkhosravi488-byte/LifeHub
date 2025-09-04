@@ -1,48 +1,37 @@
 @tailwind base;
-
 @tailwind components;
-
 @tailwind utilities;
 
-@import "tailwindcss";
-
+/* -----------------------------
+   Design tokens (light / dark)
+--------------------------------*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #0f172a;            /* slate-900 */
+  --ink-muted: #475569;      /* slate-600 */
+  --bg: #f8fafc;             /* slate-50 */
+  --card-bg: #ffffff;
+  --outline-neutral: #e5e7eb;/* gray-200 */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root.dark {
+  --ink: #e5e7eb;            /* gray-200 */
+  --ink-muted: #94a3b8;      /* slate-400 */
+  --bg: #0b1220;             /* deep navy */
+  --card-bg: #0f172a;        /* slate-900 */
+  --outline-neutral: #1f2937;/* gray-800 */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Base scaffolding */
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Cards and scrollbars */
+.card {
+  @apply bg-white dark:bg-[var(--card-bg)] border border-outline-neutral rounded-2xl;
 }
 
-:root{
-  --page-padding:24px;
-  --card-bg:#ffffff;
-  --outline-neutral:#E5E7EB; /* gray-200 */
-  --ink:#111827;             /* gray-900 */
-  --ink-muted:#6B7280;       /* gray-500 */
-  --brand:#4F46E5;           /* indigo-600 */
-  --accent-red:#EF4444;      /* red-500 */
-  --success-green:#10B981;   /* emerald-500 */
-  --accent-purple:#7C3AED;   /* violet-600 */
-}
-*{scrollbar-width:thin; scrollbar-color:#c7cbd1 transparent;}
-::-webkit-scrollbar{width:12px;height:12px}
-::-webkit-scrollbar-thumb{background:#c7cbd1;border-radius:8px;border:3px solid transparent;background-clip:content-box}
-::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-thumb { background: var(--outline-neutral); border-radius: 8px; }
