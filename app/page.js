@@ -5,6 +5,8 @@ import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
+import CreateCalendarModal from "@/components/CreateCalendarModal";
+import DarkModeToggle from "@/components/DarkModeToggle";
 import AuthButtons from "@/components/AuthButtons";
 import CalendarTabs from "@/components/CalendarTabs";
 import CalendarDay from "@/components/CalendarDay";
@@ -32,6 +34,9 @@ export default function Home() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableCalendars, setAvailableCalendars] = useState([]); // discovered from DB
   const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
+
+  // Create Calendar modal
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Draggable board order (persist in localStorage)
   const defaultOrder = ["calendar", "upcoming", "ai", "todos"];
@@ -91,9 +96,7 @@ export default function Home() {
             subtitle={viewMode === "day" ? "Day view" : viewMode === "month" ? "Month view" : "Year view"}
             height={720}
             dragHandleProps={dragHandleProps}
-            rightSlot={
-              <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
-            }
+            rightSlot={<ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />}
           >
             {/* Inner body is scrollable already via ConsoleCard */}
             {viewMode === "day" && (
@@ -169,38 +172,55 @@ export default function Home() {
       },
     };
 
-    // Keep unknown ids out; fall back to defaultOrder
     const valid = order.filter((id) => cards[id]);
     const list = (valid.length ? valid : defaultOrder).map((id) => cards[id]);
     return list;
   }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-neutral-900 dark:to-neutral-950">
       <div className="max-w-6xl mx-auto px-6">
         {/* Header */}
         <div className="flex items-center justify-between pt-6">
-          <h1 className="text-4xl font-bold text-indigo-700 tracking-tight text-center flex-1">
+          <h1 className="text-4xl font-bold text-indigo-700 dark:text-indigo-300 tracking-tight text-center flex-1">
             Welcome to LifeHub
           </h1>
-          <div className="flex justify-end w-60">
-            <AuthButtons />
+          <div className="flex items-center gap-2 justify-end">
+            <DarkModeToggle />
+            <div className="w-60 flex justify-end">
+              <AuthButtons />
+            </div>
           </div>
         </div>
 
         {/* Control strip */}
         <div className="mt-6 flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <CalendarTabs
-              value={calendarFilter}
-              onChange={setCalendarFilter}
-              onCalendarsDiscovered={setAvailableCalendars}
-            />
+            <div className="flex items-center gap-3">
+              <CalendarTabs
+                value={calendarFilter}
+                onChange={setCalendarFilter}
+                onCalendarsDiscovered={setAvailableCalendars}
+              />
+
+              <button
+              onClick={() => setCreateOpen(true)}
+              className="h-8 px-4 rounded-[12px] border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+            >
+              Add calendar
+            </button>
+
+              {/* Add calendar button (opens CreateCalendarModal) */}
+              <AddCalendarButton onClick={() => setCreateOpen(true)} />
+            </div>
+
+            
+
 
             <div className="flex items-center gap-3">
               <Link
                 href="/import"
-                className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
+                className="h-8 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold flex items-center"
                 title="Import .ics"
               >
                 Import
@@ -208,7 +228,7 @@ export default function Home() {
 
               <Link
                 href="/settings"
-                className="h-8 px-5 rounded-full border border-gray-300 bg-white text-sm font-semibold flex items-center"
+                className="h-8 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold flex items-center"
                 title="Settings"
               >
                 Settings
@@ -218,7 +238,7 @@ export default function Home() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search…"
-                className="w-80 h-8 rounded-xl border border-gray-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-80 h-8 rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
                 aria-label="Search"
               />
 
@@ -227,7 +247,7 @@ export default function Home() {
                 onClick={() => setFiltersOpen((v) => !v)}
                 aria-expanded={filtersOpen}
                 aria-controls="filters-panel"
-                className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-sm"
+                className="h-8 w-8 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm"
                 title="Filters"
               >
                 ⚙️
@@ -239,11 +259,11 @@ export default function Home() {
           {filtersOpen && (
             <div
               id="filters-panel"
-              className="p-3 bg-white border border-gray-200 rounded-xl"
+              className="p-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-gray-700 mb-2">
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                     Calendars
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -256,8 +276,8 @@ export default function Home() {
                           className={[
                             "px-3 h-8 rounded-full border text-sm",
                             active
-                              ? "border-indigo-400 bg-indigo-50"
-                              : "border-gray-300 bg-white",
+                              ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-500"
+                              : "border-gray-300 bg-white dark:bg-neutral-800 dark:border-neutral-700 dark:text-gray-200",
                           ].join(" ")}
                         >
                           {c.name}
@@ -269,7 +289,7 @@ export default function Home() {
 
                 <button
                   onClick={clearFilters}
-                  className="h-8 px-3 rounded-md border border-gray-300 text-sm bg-white"
+                  className="h-8 px-3 rounded-md border border-gray-300 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-800"
                 >
                   Clear
                 </button>
@@ -287,6 +307,16 @@ export default function Home() {
         </div>
 
         <div className="h-10" />
+
+        {/* Create Calendar Modal */}
+        <CreateCalendarModal
+          open={createOpen}
+          onClose={(result) => {
+            setCreateOpen(false);
+            // could toast result?.created
+          }}
+          user={user}
+        />
       </div>
     </main>
   );
