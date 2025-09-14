@@ -1,27 +1,56 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 
 export default function DarkModeToggle() {
-  const [mode, setMode] = useState("light");
+  const { theme, setTheme, systemTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("lh_theme") || "light";
-    setMode(stored);
-  }, []);
+  useEffect(() => setMounted(true), []);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", mode === "dark");
-    document.documentElement.setAttribute("data-theme", mode);
-    localStorage.setItem("lh_theme", mode);
-  }, [mode]);
+  const current = mounted ? (theme === "system" ? systemTheme : theme) : "light";
+  const isDark = current === "dark";
+
+  if (!mounted) {
+    // Avoid hydration mismatch
+    return (
+      <button
+        aria-label="Toggle theme"
+        className="h-8 px-3 rounded-md border border-gray-300 bg-white text-sm"
+        disabled
+      >
+        Theme
+      </button>
+    );
+  }
 
   return (
-    <button
-      onClick={() => setMode((m) => (m === "light" ? "dark" : "light"))}
-      className="h-8 px-3 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm"
-      title="Toggle dark mode"
-    >
-      {mode === "dark" ? "Light" : "Dark"}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        aria-label="Light"
+        className={`h-8 px-3 rounded-md border text-sm ${
+          !isDark ? "bg-white border-gray-300" : "bg-transparent border-gray-300"
+        }`}
+        onClick={() => setTheme("light")}
+      >
+        Light
+      </button>
+      <button
+        aria-label="Dark"
+        className={`h-8 px-3 rounded-md border text-sm ${
+          isDark ? "bg-white border-gray-300" : "bg-transparent border-gray-300"
+        }`}
+        onClick={() => setTheme("dark")}
+      >
+        Dark
+      </button>
+      <button
+        aria-label="System"
+        className="h-8 px-3 rounded-md border border-gray-300 text-sm"
+        onClick={() => setTheme("system")}
+      >
+        System
+      </button>
+    </div>
   );
 }

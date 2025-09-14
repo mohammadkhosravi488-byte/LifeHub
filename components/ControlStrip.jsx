@@ -1,5 +1,5 @@
 "use client";
-
+import DarkModeToggle from "@/components/DarkModeToggle";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";

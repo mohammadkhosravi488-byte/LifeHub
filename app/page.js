@@ -20,6 +20,7 @@ import AddCalendarButton from "@/components/AddCalendarButton";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
 
+
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
 
 export default function Home() {
