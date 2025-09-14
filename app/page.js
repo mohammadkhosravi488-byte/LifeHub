@@ -20,6 +20,8 @@ import AddCalendarButton from "@/components/AddCalendarButton";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
 
+const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
+
 export default function Home() {
   const [user, setUser] = useState(null);
 
@@ -39,14 +41,13 @@ export default function Home() {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Draggable board order (persist in localStorage)
-  const defaultOrder = ["calendar", "upcoming", "ai", "todos"];
-  const [order, setOrder] = useState(() => {
-    if (typeof window === "undefined") return defaultOrder;
+ const [order, setOrder] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_ORDER;
     try {
       const saved = JSON.parse(localStorage.getItem("lh_board_order"));
-      return Array.isArray(saved) && saved.length ? saved : defaultOrder;
+      return Array.isArray(saved) && saved.length ? saved : DEFAULT_ORDER;
     } catch {
-      return defaultOrder;
+      return DEFAULT_ORDER;
     }
   });
 
