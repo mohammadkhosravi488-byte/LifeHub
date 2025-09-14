@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { auth, googleProvider } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function AuthButtons() {
   const [user, setUser] = useState(null);
@@ -24,7 +25,7 @@ export default function AuthButtons() {
       </button>
     );
   }
-
+  <DarkModeToggle />
   const name = user.displayName || user.email || "User";
   const photo = user.photoURL || "";
 

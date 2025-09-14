@@ -1,146 +1,114 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  onSnapshot,
-  query,
-  orderBy,
-  updateDoc,
-  doc,
-  deleteDoc,
-} from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import {
+  addDoc, collection, onSnapshot, orderBy,
+  query, serverTimestamp, where
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
-export default function TodoList({
-  calendarFilter = "main",
-  search = "",
-  selectedCalendarIds = [],
-}) {
+export default function TodoList({ calendarFilter = "main", search = "", selectedCalendarIds = [] }) {
   const [user, setUser] = useState(null);
-  const [text, setText] = useState("");
-  const [items, setItems] = useState([]);
+  const [title, setTitle] = useState("");
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
+  // live tasks for this user
   useEffect(() => {
-    if (!user) return setItems([]);
-    const ref = collection(db, "users", user.uid, "tasks");
-    const qref = query(ref, orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(qref, (snap) => {
-      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    if (!user) return;
+    setLoading(true);
+    const q = query(
+      collection(db, "tasks"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = [];
+      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+      setRows(list);
+      setLoading(false);
     });
     return () => unsub();
   }, [user]);
 
   const visible = useMemo(() => {
-    const textq = search.trim().toLowerCase();
-    const selected = new Set(selectedCalendarIds || []);
-    return items.filter((t) => {
-      const calId = t.calendarId || "main";
+    let list = rows;
 
-      // Tab filter (keep default "main" simple)
-      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
+    // filter by calendar(s)
+    const calendarsActive = selectedCalendarIds.length > 0 ? selectedCalendarIds : [calendarFilter || "main"];
+    if (calendarsActive[0] !== "all") {
+      list = list.filter((t) => calendarsActive.includes(t.calendarId || "main"));
+    }
 
-      // Multi-select chips (only apply if user actually picked some)
-      if (selected.size > 0 && !selected.has(calId)) return false;
+    // search
+    const q = (search || "").trim().toLowerCase();
+    if (q) {
+      list = list.filter((t) => (t.title || "").toLowerCase().includes(q));
+    }
 
-      if (textq) {
-        const hay = `${t.title || ""}`.toLowerCase();
-        if (!hay.includes(textq)) return false;
-      }
-      return true;
-    });
-  }, [items, calendarFilter, search, selectedCalendarIds]);
+    return list;
+  }, [rows, calendarFilter, selectedCalendarIds, search]);
 
-  async function addTask() {
-    if (!user || !text.trim()) return;
-    const ref = collection(db, "users", user.uid, "tasks");
-    await addDoc(ref, {
-      title: text.trim(),
+  const onAdd = async () => {
+    if (!user || !title.trim()) return;
+    const calId = (selectedCalendarIds[0] || calendarFilter || "main") === "all"
+      ? "main"
+      : (selectedCalendarIds[0] || calendarFilter || "main");
+
+    await addDoc(collection(db, "tasks"), {
+      userId: user.uid,
+      calendarId: calId,
+      title: title.trim(),
       completed: false,
-      calendarId: calendarFilter || "main",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      tags: [],
+      priority: "none",
     });
-    setText("");
-  }
-
-  async function toggleTask(t) {
-    if (!user) return;
-    await updateDoc(doc(db, "users", user.uid, "tasks", t.id), {
-      completed: !t.completed,
-      updatedAt: serverTimestamp(),
-    });
-  }
-
-  async function removeTask(t) {
-    if (!user) return;
-    await deleteDoc(doc(db, "users", user.uid, "tasks", t.id));
-  }
-
-  if (!user) {
-    return <p className="text-gray-600 text-sm">Sign in to manage to-dos.</p>;
-  }
+    setTitle("");
+  };
 
   return (
-    <div>
-      <div className="flex gap-2 mb-3">
+    <div className="space-y-3">
+      <div className="flex gap-2">
         <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           placeholder="Add a task…"
-          className="flex-1 h-10 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
+          className="flex-1 h-9 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm"
         />
         <button
-          onClick={addTask}
-          className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
+          onClick={onAdd}
+          className="h-9 px-3 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
         >
-          Add
+          +
         </button>
       </div>
 
-      <ul className="divide-y divide-gray-200">
-        {visible.map((t) => (
-          <li key={t.id} className="py-2 flex items-center justify-between">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={!!t.completed}
-                onChange={() => toggleTask(t)}
-              />
-              <span
-                className={[
-                  "text-sm",
-                  t.completed ? "line-through text-gray-400" : "text-gray-900",
-                ].join(" ")}
-              >
-                {t.title}
-              </span>
-            </label>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-500">
-                {t.calendarId || "main"}
-              </span>
-              <button
-                className="text-xs text-red-600"
-                onClick={() => removeTask(t)}
-              >
-                delete
-              </button>
-            </div>
-          </li>
-        ))}
-        {visible.length === 0 && (
-          <li className="py-2 text-sm text-gray-500">Nothing matches.</li>
-        )}
-      </ul>
+      {loading ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>
+      ) : visible.length === 0 ? (
+        <div className="text-sm text-gray-500 dark:text-gray-400">Nothing matches</div>
+      ) : (
+        <ul className="space-y-2 max-h-64 overflow-auto">
+          {visible.map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center justify-between rounded-md border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2"
+            >
+              <div className="text-sm">{t.title}</div>
+              <div className="text-xs text-gray-400">{t.calendarId || "main"}</div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

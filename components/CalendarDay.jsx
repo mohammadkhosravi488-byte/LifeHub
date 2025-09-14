@@ -1,232 +1,185 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   query,
   where,
   orderBy,
-  onSnapshot,
+  getDocs,
   Timestamp,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import AddEvent from "@/components/AddEvent";
 
-const PX_PER_HOUR = 60; // 1h = 60px as spec
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const HOUR_ROW_PX = 60; // 1 hour = 60px
 
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-
-export default function CalendarDay({
-  calendarFilter = "main",
-  selectedCalendarIds = [],
-  onCalendarsDiscovered = () => {},
-}) {
+export default function CalendarDay({ date = new Date() }) {
   const [user, setUser] = useState(null);
-  const [date, setDate] = useState(() => new Date());
   const [events, setEvents] = useState([]);
-  const [adding, setAdding] = useState(false);
+  const scrollRef = useRef(null);
 
+  // auth
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
   }, []);
 
-  // Query events for the chosen day (range on 'start' only => no composite index)
+  // fetch events for the day
   useEffect(() => {
-    if (!user) return setEvents([]);
-    const from = startOfDay(date);
-    const to = endOfDay(date);
+    if (!user) return;
 
-    const ref = collection(db, "users", user.uid, "events");
-    const qref = query(
-      ref,
-      where("start", ">=", Timestamp.fromDate(from)),
-      where("start", "<=", Timestamp.fromDate(to)),
+    // start/end of the provided day (local)
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const q = query(
+      collection(db, "users", user.uid, "events"),
+      where("start", ">=", Timestamp.fromDate(start)),
+      where("start", "<=", Timestamp.fromDate(end)),
       orderBy("start", "asc")
     );
 
-    const unsub = onSnapshot(
-      qref,
-      (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEvents(rows);
-        // surface any new calendar ids up to the page so filters show real chips
-        const found = Array.from(
-          new Set(rows.map((r) => r.calendarId || "main"))
-        )
-          .filter((id) => id !== "main")
-          .map((id) => ({ id, name: id }));
-        onCalendarsDiscovered(found);
-      },
-      (err) => {
-        console.error("Day query failed", err);
-      }
-    );
-    return () => unsub();
-  }, [user, date, onCalendarsDiscovered]);
+    getDocs(q)
+      .then((snap) => {
+        const arr = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          arr.push({
+            id: d.id,
+            title: data.summary || data.title || "Untitled",
+            start: data.start?.toDate ? data.start.toDate() : new Date(data.start),
+            end: data.end?.toDate ? data.end.toDate() : new Date(data.end),
+            color: data.fillColor || "#3b82f6",
+            priority: data.priority || "none",
+          });
+        });
+        setEvents(arr);
+      })
+      .catch((e) => {
+        console.error("Day fetch failed", e);
+      });
+  }, [user, date]);
 
-  const visible = useMemo(() => {
-    const selected = new Set(selectedCalendarIds || []);
-    return events.filter((ev) => {
-      const calId = ev.calendarId || "main";
-      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
-      if (selected.size > 0 && !selected.has(calId)) return false;
-      return true;
-    });
-  }, [events, calendarFilter, selectedCalendarIds]);
+  // auto-scroll to "now" (or 8am if not today)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
 
-  // positioning helpers
-  const pos = useCallback((ev) => {
-    const s = ev.start?.toDate?.() || new Date(ev.start);
-    const e = ev.end?.toDate?.() || (ev.end ? new Date(ev.end) : null);
-    const minutesFromMidnight = s.getHours() * 60 + s.getMinutes();
-    const top = (minutesFromMidnight / 60) * PX_PER_HOUR;
-    const endMinutes = e
-      ? e.getHours() * 60 + e.getMinutes()
-      : minutesFromMidnight + 30;
-    const height = Math.max(30, ((endMinutes - minutesFromMidnight) / 60) * PX_PER_HOUR);
-    return { top, height };
-  }, []);
+    const now = new Date();
+    const isSameDay =
+      now.getFullYear() === date.getFullYear() &&
+      now.getMonth() === date.getMonth() &&
+      now.getDate() === date.getDate();
 
-  const prettyDate = useMemo(() => {
-    return date.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+    const targetHour = isSameDay ? now.getHours() : 8; // jump to 8am on non-today
+    const y = targetHour * HOUR_ROW_PX - 100; // slight offset
+    el.scrollTo({ top: Math.max(0, y), behavior: "instant" });
   }, [date]);
 
+  // layout helpers
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+
+  const outlineForPriority = (p) => {
+    switch (p) {
+      case "high":
+        return "ring-4 ring-red-500";
+      case "medium":
+        return "ring-4 ring-green-500";
+      case "low":
+        return "ring-4 ring-blue-500";
+      default:
+        return "ring-1 ring-gray-300";
+    }
+  };
+
+  const positioned = useMemo(() => {
+    return events.map((ev) => {
+      const startMins = ev.start.getHours() * 60 + ev.start.getMinutes();
+      const endMins = ev.end
+        ? ev.end.getHours() * 60 + ev.end.getMinutes()
+        : startMins + 30;
+      const top = (startMins / 60) * HOUR_ROW_PX;
+      const height = Math.max(24, ((endMins - startMins) / 60) * HOUR_ROW_PX);
+      return { ...ev, top, height };
+    });
+  }, [events]);
+
+  const dayLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(date);
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-4">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <button
-            className="h-8 w-8 rounded-md border border-gray-300 bg-white"
-            onClick={() => setDate((d) => new Date(d.getTime() - 86400000))}
-            aria-label="Previous day"
-          >
-            ‹
-          </button>
-          <div className="text-lg font-semibold text-gray-800">{prettyDate}</div>
-          <button
-            className="h-8 w-8 rounded-md border border-gray-300 bg-white"
-            onClick={() => setDate((d) => new Date(d.getTime() + 86400000))}
-            aria-label="Next day"
-          >
-            ›
-          </button>
-          <button
-            className="h-8 px-3 rounded-md border border-gray-300 bg-white ml-2"
-            onClick={() => setDate(new Date())}
-          >
-            Today
-          </button>
-        </div>
-        <button
-          className="h-8 px-4 rounded-full border border-gray-300 bg-white text-sm font-semibold"
-          onClick={() => setAdding(true)}
+    <div className="w-full">
+      {/* Top bar inside card */}
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          aria-hidden
+          className="h-8 w-8 rounded-lg border border-gray-300 grid place-items-center cursor-default"
         >
-          + Add event
-        </button>
+          ‹
+        </div>
+        <div className="text-xl font-bold">{dayLabel}</div>
       </div>
 
-      {/* Add event inline */}
-      {adding && (
-        <div className="mb-4">
-          <AddEvent
-            defaultCalendarId={calendarFilter === "all" ? "main" : calendarFilter}
-            defaultDate={date}
-            onClose={() => setAdding(false)}
-            onCreated={() => setAdding(false)}
-          />
-        </div>
-      )}
-
-      {/* Timeline */}
-      <div className="relative border-t border-gray-200">
-        <div className="grid grid-cols-[80px_1fr]">
-          {/* Time ruler */}
-          <div className="pr-2">
-            {HOURS.map((h) => (
+      <div
+        ref={scrollRef}
+        className="relative border border-gray-200 rounded-2xl bg-white"
+        style={{ height: 640, overflowY: "auto" }}
+      >
+        <div className="grid" style={{ gridTemplateColumns: "80px 1fr" }}>
+          {/* time ruler */}
+          <div className="relative">
+            {hours.map((h) => (
               <div
                 key={h}
-                className="h-[60px] text-right pr-1 text-xs text-gray-500 border-b border-gray-100"
+                className="pr-2 text-right text-gray-500 border-b border-gray-100"
+                style={{ height: HOUR_ROW_PX, lineHeight: `${HOUR_ROW_PX}px` }}
               >
-                {new Date(0, 0, 0, h).toLocaleTimeString([], {
+                {new Intl.DateTimeFormat(undefined, {
                   hour: "numeric",
-                })}
+                }).format(new Date(2000, 0, 1, h))}
               </div>
             ))}
           </div>
 
-          {/* Event canvas */}
-          <div className="relative">
-            {/* hour lines */}
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="absolute left-0 right-0 border-b border-gray-100"
-                style={{ top: h * PX_PER_HOUR, height: 0 }}
-              />
-            ))}
+          {/* event canvas */}
+          <div className="relative border-l border-gray-100">
+            <div
+              className="relative"
+              style={{ height: 24 * HOUR_ROW_PX }}
+            >
+              {/* hour grid lines */}
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="absolute left-0 right-0 border-b border-gray-100"
+                  style={{ top: h * HOUR_ROW_PX, height: HOUR_ROW_PX }}
+                />
+              ))}
 
-            {/* events */}
-            <div className="relative" style={{ height: 24 * PX_PER_HOUR }}>
-              {visible.map((ev) => {
-                const { top, height } = pos(ev);
-                const title = ev.summary || "(no title)";
-                const cal = ev.calendarId || "main";
-                return (
-                  <div
-                    key={ev.id}
-                    className="absolute left-2 right-3 rounded-2xl"
-                    style={{
-                      top,
-                      height,
-                      background: "var(--card-bg, #eef2ff)",
-                      border: "4px solid var(--outline, #c7d2fe)",
-                      padding: "8px 10px",
-                      overflow: "hidden",
-                    }}
-                    title={title}
-                    aria-label={`${title}`}
-                  >
-                    <div className="text-xs text-gray-500 mb-1">{cal}</div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {title}
-                    </div>
-                    {ev.location && (
-                      <div className="text-xs text-gray-600 mt-0.5">
-                        📍 {ev.location}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {user && visible.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  No events today.
+              {/* events */}
+              {positioned.map((ev) => (
+                <div
+                  key={ev.id}
+                  className={`absolute left-3 right-6 rounded-2xl px-3 py-2 text-sm font-semibold text-white shadow-sm ${outlineForPriority(
+                    ev.priority
+                  )}`}
+                  style={{
+                    top: ev.top,
+                    height: ev.height,
+                    background: ev.color,
+                  }}
+                  title={`${ev.title}`}
+                  aria-label={`${ev.title}`}
+                >
+                  {ev.title}
                 </div>
-              )}
-              {!user && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  Sign in to view your day.
-                </div>
-              )}
+              ))}
             </div>
           </div>
         </div>
