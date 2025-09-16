@@ -18,6 +18,7 @@ import ViewToggle from "@/components/ViewToggle";
 import AddCalendarButton from "@/components/AddCalendarButton";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];

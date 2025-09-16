@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 
@@ -25,32 +26,13 @@ export default function DarkModeToggle() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <button
-        aria-label="Light"
-        className={`h-8 px-3 rounded-md border text-sm ${
-          !isDark ? "bg-white border-gray-300" : "bg-transparent border-gray-300"
-        }`}
-        onClick={() => setTheme("light")}
-      >
-        Light
-      </button>
-      <button
-        aria-label="Dark"
-        className={`h-8 px-3 rounded-md border text-sm ${
-          isDark ? "bg-white border-gray-300" : "bg-transparent border-gray-300"
-        }`}
-        onClick={() => setTheme("dark")}
-      >
-        Dark
-      </button>
-      <button
-        aria-label="System"
-        className="h-8 px-3 rounded-md border border-gray-300 text-sm"
-        onClick={() => setTheme("system")}
-      >
-        System
-      </button>
-    </div>
+    <button
+      onClick={toggle}
+      className="h-8 px-3 rounded-full border border-gray-300 bg-white text-sm font-semibold"
+      title={mode === "dark" ? "Switch to light" : "Switch to dark"}
+      aria-label="Toggle dark mode"
+    >
+      {mode === "dark" ? "🌙 Dark" : "☀️ Light"}
+    </button>
   );
 }
