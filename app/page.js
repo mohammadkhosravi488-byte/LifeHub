@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-
 import CreateCalendarModal from "@/components/CreateCalendarModal";
 import DarkModeToggle from "@/components/DarkModeToggle";
 import AuthButtons from "@/components/AuthButtons";

@@ -2,112 +2,193 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import {
-  addDoc, collection, onSnapshot, orderBy,
-  query, serverTimestamp, where
-} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  deleteDoc,
+  where,
+} from "firebase/firestore";
 
-export default function TodoList({ calendarFilter = "main", search = "", selectedCalendarIds = [] }) {
+/**
+ * Props
+ * - calendarFilter: "main" | calendarId | "all"
+ * - selectedCalendarIds: string[] (optional)
+ * - search: string (optional)
+ */
+export default function TodoList({
+  calendarFilter = "main",
+  selectedCalendarIds = [],
+  search = "",
+}) {
   const [user, setUser] = useState(null);
-  const [title, setTitle] = useState("");
-  const [rows, setRows] = useState([]);
+  const [input, setInput] = useState("");
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // auth
+  // Track auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  // live tasks for this user
+  // Live query: all my tasks (we do client-side filtering to avoid Firestore composite index issues)
   useEffect(() => {
-    if (!user) return;
-    setLoading(true);
+    if (!user) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
     const q = query(
       collection(db, "tasks"),
-      where("userId", "==", user.uid),
+      where("ownerId", "==", user.uid),
       orderBy("createdAt", "desc")
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const list = [];
-      snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-      setRows(list);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const arr = [];
+        snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+        setTasks(arr);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
     return () => unsub();
   }, [user]);
 
+  // Filtering in-memory (search + calendars)
   const visible = useMemo(() => {
-    let list = rows;
+    let list = tasks;
 
-    // filter by calendar(s)
-    const calendarsActive = selectedCalendarIds.length > 0 ? selectedCalendarIds : [calendarFilter || "main"];
-    if (calendarsActive[0] !== "all") {
-      list = list.filter((t) => calendarsActive.includes(t.calendarId || "main"));
+    // calendarFilter: main means calendarId is "main" or undefined/null
+    if (calendarFilter && calendarFilter !== "all") {
+      if (calendarFilter === "main") {
+        list = list.filter(
+          (t) => !t.calendarId || t.calendarId === "main"
+        );
+      } else {
+        list = list.filter((t) => t.calendarId === calendarFilter);
+      }
     }
 
-    // search
-    const q = (search || "").trim().toLowerCase();
-    if (q) {
-      list = list.filter((t) => (t.title || "").toLowerCase().includes(q));
+    if (selectedCalendarIds?.length) {
+      const set = new Set(selectedCalendarIds);
+      list = list.filter((t) => set.has(t.calendarId || "main"));
+    }
+
+    if (search?.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter(
+        (t) =>
+          (t.title || "").toLowerCase().includes(s) ||
+          (t.notes || "").toLowerCase().includes(s)
+      );
     }
 
     return list;
-  }, [rows, calendarFilter, selectedCalendarIds, search]);
+  }, [tasks, calendarFilter, selectedCalendarIds, search]);
 
-  const onAdd = async () => {
-    if (!user || !title.trim()) return;
-    const calId = (selectedCalendarIds[0] || calendarFilter || "main") === "all"
-      ? "main"
-      : (selectedCalendarIds[0] || calendarFilter || "main");
-
+  async function addTask() {
+    const title = input.trim();
+    if (!user || !title) return;
     await addDoc(collection(db, "tasks"), {
-      userId: user.uid,
-      calendarId: calId,
-      title: title.trim(),
+      title,
+      notes: "",
       completed: false,
+      ownerId: user.uid,
+      calendarId: calendarFilter || "main",
+      priority: "none",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-      tags: [],
-      priority: "none",
     });
-    setTitle("");
-  };
+    setInput("");
+  }
+
+  async function toggleComplete(t) {
+    await updateDoc(doc(db, "tasks", t.id), {
+      completed: !t.completed,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  async function remove(t) {
+    await deleteDoc(doc(db, "tasks", t.id));
+  }
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
+      {/* Input row */}
+      <div className="flex items-center gap-2">
         <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           placeholder="Add a task…"
-          className="flex-1 h-9 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm"
+          className="flex-1 h-9 rounded-lg border border-gray-300 px-3 text-sm bg-white dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addTask();
+          }}
         />
         <button
-          onClick={onAdd}
-          className="h-9 px-3 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+          onClick={addTask}
+          className="h-9 px-3 rounded-lg border border-gray-300 bg-white text-sm font-semibold dark:bg-gray-800 dark:border-gray-700"
         >
           +
         </button>
       </div>
 
+      {/* List */}
       {loading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>
-      ) : visible.length === 0 ? (
-        <div className="text-sm text-gray-500 dark:text-gray-400">Nothing matches</div>
-      ) : (
-        <ul className="space-y-2 max-h-64 overflow-auto">
+      ) : visible.length ? (
+        <ul className="divide-y divide-gray-200 dark:divide-gray-800">
           {visible.map((t) => (
             <li
               key={t.id}
-              className="flex items-center justify-between rounded-md border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2"
+              className="flex items-center gap-3 py-2"
             >
-              <div className="text-sm">{t.title}</div>
-              <div className="text-xs text-gray-400">{t.calendarId || "main"}</div>
+              <input
+                type="checkbox"
+                checked={!!t.completed}
+                onChange={() => toggleComplete(t)}
+                className="h-4 w-4"
+                aria-label="Complete task"
+              />
+              <div className="flex-1">
+                <div
+                  className={`text-sm ${
+                    t.completed
+                      ? "line-through text-gray-400 dark:text-gray-500"
+                      : "text-gray-800 dark:text-gray-100"
+                  }`}
+                >
+                  {t.title}
+                </div>
+                {t.calendarId && t.calendarId !== "main" && (
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {t.calendarId}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => remove(t)}
+                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700"
+              >
+                Delete
+              </button>
             </li>
           ))}
         </ul>
+      ) : (
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Nothing matches.
+        </div>
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import { parseIcs } from "@/lib/ics";
 import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 export default function ImportPage() {
   const [user, setUser] = useState(null);
