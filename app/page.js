@@ -5,7 +5,6 @@ import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import CreateCalendarModal from "@/components/CreateCalendarModal";
-import DarkModeToggle from "@/components/DarkModeToggle";
 import AuthButtons from "@/components/AuthButtons";
 import CalendarTabs from "@/components/CalendarTabs";
 import CalendarDay from "@/components/CalendarDay";
@@ -18,7 +17,7 @@ import ViewToggle from "@/components/ViewToggle";
 import AddCalendarButton from "@/components/AddCalendarButton";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
-import DarkModeToggle from "@/components/DarkModeToggle";
+
 
 
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
