@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import CreateCalendarModal from "@/components/CreateCalendarModal";
+
 import AuthButtons from "@/components/AuthButtons";
 import CalendarTabs from "@/components/CalendarTabs";
 import CalendarDay from "@/components/CalendarDay";
@@ -14,11 +14,9 @@ import AIConsole from "@/components/AIConsole";
 import CalendarMonth from "@/components/CalendarMonth";
 import CalendarYear from "@/components/CalendarYear";
 import ViewToggle from "@/components/ViewToggle";
-import AddCalendarButton from "@/components/AddCalendarButton";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
-
-
+import CreateCalendarModal from "@/components/CreateCalendarModal";
 
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
 
@@ -41,7 +39,7 @@ export default function Home() {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Draggable board order (persist in localStorage)
- const [order, setOrder] = useState(() => {
+  const [order, setOrder] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_ORDER;
     try {
       const saved = JSON.parse(localStorage.getItem("lh_board_order"));
@@ -67,7 +65,9 @@ export default function Home() {
     const uniq = new Map();
     uniq.set("main", { id: "main", name: "Main" });
     (availableCalendars || []).forEach((c) => {
-      if (c?.id && c.id !== "main") uniq.set(c.id, { id: c.id, name: c.name || c.id });
+      if (c?.id && c.id !== "main") {
+        uniq.set(c.id, { id: c.id, name: c.name || c.id });
+      }
     });
     return Array.from(uniq.values());
   }, [availableCalendars]);
@@ -94,10 +94,18 @@ export default function Home() {
         render: ({ dragHandleProps }) => (
           <ConsoleCard
             title="Calendar"
-            subtitle={viewMode === "day" ? "Day view" : viewMode === "month" ? "Month view" : "Year view"}
+            subtitle={
+              viewMode === "day"
+                ? "Day view"
+                : viewMode === "month"
+                ? "Month view"
+                : "Year view"
+            }
             height={720}
             dragHandleProps={dragHandleProps}
-            rightSlot={<ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />}
+            rightSlot={
+              <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
+            }
           >
             {/* Inner body is scrollable already via ConsoleCard */}
             {viewMode === "day" && (
@@ -174,9 +182,16 @@ export default function Home() {
     };
 
     const valid = order.filter((id) => cards[id]);
-    const list = (valid.length ? valid : defaultOrder).map((id) => cards[id]);
+    const list = (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]);
     return list;
-  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
+  }, [
+    order,
+    viewMode,
+    calendarFilter,
+    selectedCalendarIds,
+    search,
+    availableCalendars,
+  ]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-neutral-900 dark:to-neutral-950">
@@ -187,7 +202,7 @@ export default function Home() {
             Welcome to LifeHub
           </h1>
           <div className="flex items-center gap-2 justify-end">
-            <DarkModeToggle />
+            {/* DarkModeToggle renders in layout/header — not here to avoid duplicate imports */}
             <div className="w-60 flex justify-end">
               <AuthButtons />
             </div>
@@ -204,19 +219,14 @@ export default function Home() {
                 onCalendarsDiscovered={setAvailableCalendars}
               />
 
+              {/* Single "Add calendar" button that opens CreateCalendarModal */}
               <button
-              onClick={() => setCreateOpen(true)}
-              className="h-8 px-4 rounded-[12px] border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-            >
-              Add calendar
-            </button>
-
-              {/* Add calendar button (opens CreateCalendarModal) */}
-              <AddCalendarButton onClick={() => setCreateOpen(true)} />
+                onClick={() => setCreateOpen(true)}
+                className="h-8 px-4 rounded-[12px] border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+              >
+                Add calendar
+              </button>
             </div>
-
-            
-
 
             <div className="flex items-center gap-3">
               <Link
@@ -301,10 +311,7 @@ export default function Home() {
 
         {/* Draggable board */}
         <div className="mt-6">
-          <ConsoleBoard
-            items={items}
-            onReorder={(ids) => setOrder(ids)}
-          />
+          <ConsoleBoard items={items} onReorder={(ids) => setOrder(ids)} />
         </div>
 
         <div className="h-10" />
@@ -314,7 +321,7 @@ export default function Home() {
           open={createOpen}
           onClose={(result) => {
             setCreateOpen(false);
-            // could toast result?.created
+            // Optionally: toast(result?.created ? "Calendar created" : "Canceled")
           }}
           user={user}
         />
