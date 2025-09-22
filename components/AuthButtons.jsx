@@ -1,74 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { auth, googleProvider } from "@/lib/firebase";
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
-import ThemeToggle from "@/components/ThemeToggle";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { auth } from "@/lib/firebase";
+import { signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+import DarkModeToggle from "@/components/DarkModeToggle"; // ✅ ADD THIS IMPORT
 
 export default function AuthButtons() {
-  const [user, setUser] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [user] = useAuthState(auth);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
+  const login = async () => {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  };
 
-  if (!user) {
-    return (
-      <button
-        onClick={() => signInWithPopup(auth, googleProvider)}
-        className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
-      >
-        Sign in with Google
-      </button>
-    );
-  }
-  <DarkModeToggle />
-  const name = user.displayName || user.email || "User";
-  const photo = user.photoURL || "";
+  const logout = async () => {
+    await signOut(auth);
+  };
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-300 bg-white"
-        aria-expanded={open}
-      >
-        <span className="text-sm font-semibold text-gray-700">
-          Hello {name.split(" ")[0]}
-        </span>
-        {photo ? (
-          <img
-            src={photo}
-            alt="avatar"
-            className="w-8 h-8 rounded-full object-cover"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-gray-200" />
-        )}
-      </button>
+    <div className="flex items-center gap-3">
+      {/* ✅ Dark mode button goes here */}
+      <DarkModeToggle />
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-40 rounded-lg border border-gray-200 bg-white shadow">
-          <Link
-            href="/settings"
-            className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            onClick={() => setOpen(false)}
-          >
-            Settings
-          </Link>
-          <button
-            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            onClick={() => {
-              setOpen(false);
-              signOut(auth);
-            }}
-          >
-            Sign out
-          </button>
-        </div>
+      {!user ? (
+        <button
+          onClick={login}
+          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+        >
+          Sign in
+        </button>
+      ) : (
+        <button
+          onClick={logout}
+          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+        >
+          Sign out
+        </button>
       )}
     </div>
   );
