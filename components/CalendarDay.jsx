@@ -1,138 +1,188 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
-  onSnapshot,
   query,
   where,
-  addDoc,
+  orderBy,
+  getDocs,
   Timestamp,
 } from "firebase/firestore";
 
-function toDate(val) {
-  if (!val) return null;
-  if (val instanceof Date) return val;
-  if (val.toDate) return val.toDate();
-  return new Date(val);
-}
+const HOUR_ROW_PX = 60; // 1 hour = 60px
 
 export default function CalendarDay({ date = new Date() }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
-  const [todos, setTodos] = useState([]);
-  const [newEvent, setNewEvent] = useState("");
-  const [newTodo, setNewTodo] = useState("");
+  const scrollRef = useRef(null);
 
+  // auth
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
   }, []);
 
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-
+  // fetch events for the day
   useEffect(() => {
     if (!user) return;
+
+    // start/end of the provided day (local)
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
     const q = query(
       collection(db, "users", user.uid, "events"),
       where("start", ">=", Timestamp.fromDate(start)),
-      where("start", "<=", Timestamp.fromDate(end))
+      where("start", "<=", Timestamp.fromDate(end)),
+      orderBy("start", "asc")
     );
-    return onSnapshot(q, (snap) => {
-      setEvents(snap.docs.map((d) => ({ id: d.id, ...d.data(), start: toDate(d.data().start) })));
-    });
-  }, [user, start.getTime(), end.getTime()]);
 
+    getDocs(q)
+      .then((snap) => {
+        const arr = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          arr.push({
+            id: d.id,
+            title: data.summary || data.title || "Untitled",
+            start: data.start?.toDate ? data.start.toDate() : new Date(data.start),
+            end: data.end?.toDate ? data.end.toDate() : new Date(data.end),
+            color: data.fillColor || "#3b82f6",
+            priority: data.priority || "none",
+          });
+        });
+        setEvents(arr);
+      })
+      .catch((e) => {
+        console.error("Day fetch failed", e);
+      });
+  }, [user, date]);
+
+  // auto-scroll to "now" (or 8am if not today)
   useEffect(() => {
-    if (!user) return;
-    return onSnapshot(collection(db, "users", user.uid, "todos"), (snap) => {
-      setTodos(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data(), due: toDate(d.data().due) }))
-          .filter((t) => t.due && t.due.toDateString() === date.toDateString())
-      );
-    });
-  }, [user, date.toDateString()]);
+    const el = scrollRef.current;
+    if (!el) return;
 
-  const addEvent = async () => {
-    if (!newEvent.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "events"), {
-      title: newEvent,
-      start: Timestamp.fromDate(date),
-      end: Timestamp.fromDate(date),
-      createdAt: Timestamp.now(),
-    });
-    setNewEvent("");
+    const now = new Date();
+    const isSameDay =
+      now.getFullYear() === date.getFullYear() &&
+      now.getMonth() === date.getMonth() &&
+      now.getDate() === date.getDate();
+
+    const targetHour = isSameDay ? now.getHours() : 8; // jump to 8am on non-today
+    const y = targetHour * HOUR_ROW_PX - 100; // slight offset
+    el.scrollTo({ top: Math.max(0, y), behavior: "instant" });
+  }, [date]);
+
+  // layout helpers
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+
+  const outlineForPriority = (p) => {
+    switch (p) {
+      case "high":
+        return "ring-4 ring-red-500";
+      case "medium":
+        return "ring-4 ring-green-500";
+      case "low":
+        return "ring-4 ring-blue-500";
+      default:
+        return "ring-1 ring-gray-300";
+    }
   };
 
-  const addTodo = async () => {
-    if (!newTodo.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "todos"), {
-      text: newTodo,
-      due: Timestamp.fromDate(date),
-      completed: false,
-      createdAt: Timestamp.now(),
+  const positioned = useMemo(() => {
+    return events.map((ev) => {
+      const startMins = ev.start.getHours() * 60 + ev.start.getMinutes();
+      const endMins = ev.end
+        ? ev.end.getHours() * 60 + ev.end.getMinutes()
+        : startMins + 30;
+      const top = (startMins / 60) * HOUR_ROW_PX;
+      const height = Math.max(24, ((endMins - startMins) / 60) * HOUR_ROW_PX);
+      return { ...ev, top, height };
     });
-    setNewTodo("");
-  };
+  }, [events]);
 
-  if (!user) return <p className="text-gray-500">Sign in to see day view.</p>;
+  const dayLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(date);
 
   return (
-    <div className="p-4 border rounded-xl bg-white dark:bg-gray-900">
-      <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-100">
-        {date.toDateString()}
-      </h2>
-
-      <div className="flex gap-2 mb-3">
-        <input
-          value={newEvent}
-          onChange={(e) => setNewEvent(e.target.value)}
-          placeholder="New event"
-          className="flex-1 rounded-md border px-2 py-1 text-sm"
-        />
-        <button onClick={addEvent} className="bg-indigo-600 text-white text-sm px-3 rounded-md">
-          Add Event
-        </button>
+    <div className="w-full">
+      {/* Top bar inside card */}
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          aria-hidden
+          className="h-8 w-8 rounded-lg border border-gray-300 grid place-items-center cursor-default"
+        >
+          ‹
+        </div>
+        <div className="text-xl font-bold">{dayLabel}</div>
       </div>
 
-      <div className="flex gap-2 mb-3">
-        <input
-          value={newTodo}
-          onChange={(e) => setNewTodo(e.target.value)}
-          placeholder="New task"
-          className="flex-1 rounded-md border px-2 py-1 text-sm"
-        />
-        <button onClick={addTodo} className="bg-indigo-600 text-white text-sm px-3 rounded-md">
-          Add Todo
-        </button>
-      </div>
+      <div
+        ref={scrollRef}
+        className="relative border border-gray-200 rounded-2xl bg-white"
+        style={{ height: 640, overflowY: "auto" }}
+      >
+        <div className="grid" style={{ gridTemplateColumns: "80px 1fr" }}>
+          {/* time ruler */}
+          <div className="relative">
+            {hours.map((h) => (
+              <div
+                key={h}
+                className="pr-2 text-right text-gray-500 border-b border-gray-100"
+                style={{ height: HOUR_ROW_PX, lineHeight: `${HOUR_ROW_PX}px` }}
+              >
+                {new Intl.DateTimeFormat(undefined, {
+                  hour: "numeric",
+                }).format(new Date(2000, 0, 1, h))}
+              </div>
+            ))}
+          </div>
 
-      <div>
-        <h3 className="font-semibold text-gray-700 dark:text-gray-200">Events</h3>
-        <ul className="space-y-1">
-          {events.map((ev) => (
-            <li key={ev.id} className="text-sm text-gray-800 dark:text-gray-100">
-              • {ev.title}
-            </li>
-          ))}
-        </ul>
-      </div>
+          {/* event canvas */}
+          <div className="relative border-l border-gray-100">
+            <div
+              className="relative"
+              style={{ height: 24 * HOUR_ROW_PX }}
+            >
+              {/* hour grid lines */}
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="absolute left-0 right-0 border-b border-gray-100"
+                  style={{ top: h * HOUR_ROW_PX, height: HOUR_ROW_PX }}
+                />
+              ))}
 
-      <div className="mt-3">
-        <h3 className="font-semibold text-gray-700 dark:text-gray-200">Todos</h3>
-        <ul className="space-y-1">
-          {todos.map((td) => (
-            <li key={td.id} className="text-sm text-gray-800 dark:text-gray-100">
-              • {td.text}
-            </li>
-          ))}
-        </ul>
+              {/* events */}
+              {positioned.map((ev) => (
+                <div
+                  key={ev.id}
+                  className={`absolute left-3 right-6 rounded-2xl px-3 py-2 text-sm font-semibold text-white shadow-sm ${outlineForPriority(
+                    ev.priority
+                  )}`}
+                  style={{
+                    top: ev.top,
+                    height: ev.height,
+                    background: ev.color,
+                  }}
+                  title={`${ev.title}`}
+                  aria-label={`${ev.title}`}
+                >
+                  {ev.title}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

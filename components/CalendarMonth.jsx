@@ -150,6 +150,18 @@ export default function CalendarMonth({
     const map = new Map();
     const inCal = (cid) => !activeCalendars || activeCalendars.has(cid || "main");
 
+    const addEvent = async (monthIndex) => {
+    if (!newEvent.trim() || !user) return;
+    const date = new Date(year, monthIndex, 1);
+    await addDoc(collection(db, "users", user.uid, "events"), {
+      title: newEvent,
+      start: Timestamp.fromDate(date),
+      end: Timestamp.fromDate(date),
+      createdAt: Timestamp.now(),
+    });
+    setNewEvent("");
+  };
+
     events.forEach((ev) => {
       if (!ev.start || !inCal(ev.calendarId)) return;
       const key = ev.start.toISOString().slice(0, 10);
@@ -204,6 +216,8 @@ export default function CalendarMonth({
             {w}
           </div>
         ))}
+
+        
 
         {monthCells.map((day) => {
           const inMonth = day.getMonth() === currentDate.getMonth();
