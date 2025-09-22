@@ -21,24 +21,32 @@ import CreateCalendarModal from "@/components/CreateCalendarModal";
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
 
 export default function Home() {
-  const [user, setUser] = useState(null);
+  // Hydration guard
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  // View mode for calendar
+  const [user, setUser] = useState(null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
+
+  // View mode
   const [viewMode, setViewMode] = useState("day"); // "day" | "month" | "year"
   const cycleView = () =>
     setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"));
 
-  // Tabs / filters / search
-  const [calendarFilter, setCalendarFilter] = useState("main"); // default Main only
+  // Filters / search
+  const [calendarFilter, setCalendarFilter] = useState("main"); // "main" default
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [availableCalendars, setAvailableCalendars] = useState([]); // discovered from DB
-  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
+  const [availableCalendars, setAvailableCalendars] = useState([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]);
 
-  // Create Calendar modal
+  // Create calendar modal
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Draggable board order (persist in localStorage)
+  // Board order
   const [order, setOrder] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_ORDER;
     try {
@@ -48,26 +56,19 @@ export default function Home() {
       return DEFAULT_ORDER;
     }
   });
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
-
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("lh_board_order", JSON.stringify(order));
     }
   }, [order]);
 
-  // Keep “Main” always present in filters
+  // Build selectable calendars (always include Main)
   const selectableCalendars = useMemo(() => {
     const uniq = new Map();
     uniq.set("main", { id: "main", name: "Main" });
     (availableCalendars || []).forEach((c) => {
-      if (c?.id && c.id !== "main") {
+      if (c?.id && c.id !== "main")
         uniq.set(c.id, { id: c.id, name: c.name || c.id });
-      }
     });
     return Array.from(uniq.values());
   }, [availableCalendars]);
@@ -77,15 +78,15 @@ export default function Home() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
-
   const clearFilters = () => {
     setSearch("");
     setSelectedCalendarIds([]);
     setFiltersOpen(false);
   };
 
-  // ----- Build the board items (cards) -----
+  // Build board items
   const items = useMemo(() => {
+    const chosen = selectedCalendarIds.length ? selectedCalendarIds : ["main"];
     const cards = {
       calendar: {
         id: "calendar",
@@ -107,12 +108,11 @@ export default function Home() {
               <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
             }
           >
-            {/* Inner body is scrollable already via ConsoleCard */}
             {viewMode === "day" && (
               <div className="min-h-[640px]">
                 <CalendarDay
                   calendarFilter={calendarFilter}
-                  selectedCalendarIds={selectedCalendarIds}
+                  selectedCalendarIds={chosen}
                   onCalendarsDiscovered={setAvailableCalendars}
                 />
               </div>
@@ -121,7 +121,7 @@ export default function Home() {
               <div className="min-h-[640px]">
                 <CalendarMonth
                   calendarFilter={calendarFilter}
-                  selectedCalendarIds={selectedCalendarIds}
+                  selectedCalendarIds={chosen}
                   onCalendarsDiscovered={setAvailableCalendars}
                 />
               </div>
@@ -130,7 +130,7 @@ export default function Home() {
               <div className="min-h-[640px]">
                 <CalendarYear
                   calendarFilter={calendarFilter}
-                  selectedCalendarIds={selectedCalendarIds}
+                  selectedCalendarIds={chosen}
                   onCalendarsDiscovered={setAvailableCalendars}
                 />
               </div>
@@ -138,7 +138,6 @@ export default function Home() {
           </ConsoleCard>
         ),
       },
-
       upcoming: {
         id: "upcoming",
         spanLg: 2,
@@ -148,12 +147,11 @@ export default function Home() {
             <Upcoming
               calendarFilter={calendarFilter}
               search={search}
-              selectedCalendarIds={selectedCalendarIds}
+              selectedCalendarIds={chosen}
             />
           </ConsoleCard>
         ),
       },
-
       ai: {
         id: "ai",
         spanLg: 1,
@@ -164,7 +162,6 @@ export default function Home() {
           </ConsoleCard>
         ),
       },
-
       todos: {
         id: "todos",
         spanLg: 1,
@@ -174,7 +171,7 @@ export default function Home() {
             <TodoList
               calendarFilter={calendarFilter}
               search={search}
-              selectedCalendarIds={selectedCalendarIds}
+              selectedCalendarIds={chosen}
             />
           </ConsoleCard>
         ),
@@ -182,34 +179,25 @@ export default function Home() {
     };
 
     const valid = order.filter((id) => cards[id]);
-    const list = (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]);
-    return list;
-  }, [
-    order,
-    viewMode,
-    calendarFilter,
-    selectedCalendarIds,
-    search,
-    availableCalendars,
-  ]);
+    return (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]);
+  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
+
+  if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-neutral-900 dark:to-neutral-950">
       <div className="max-w-6xl mx-auto px-6">
-        {/* Header */}
+        {/* Header (keep simple to avoid hydration mismatches) */}
         <div className="flex items-center justify-between pt-6">
-          <h1 className="text-4xl font-bold text-indigo-700 dark:text-indigo-300 tracking-tight text-center flex-1">
+          <h1 className="text-2xl font-semibold text-indigo-700 dark:text-indigo-300">
             Welcome to LifeHub
           </h1>
-          <div className="flex items-center gap-2 justify-end">
-            {/* DarkModeToggle renders in layout/header — not here to avoid duplicate imports */}
-            <div className="w-60 flex justify-end">
-              <AuthButtons />
-            </div>
+          <div className="w-60 flex justify-end">
+            <AuthButtons />
           </div>
         </div>
 
-        {/* Control strip */}
+        {/* Controls */}
         <div className="mt-6 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -219,7 +207,6 @@ export default function Home() {
                 onCalendarsDiscovered={setAvailableCalendars}
               />
 
-              {/* Single "Add calendar" button that opens CreateCalendarModal */}
               <button
                 onClick={() => setCreateOpen(true)}
                 className="h-8 px-4 rounded-[12px] border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
@@ -232,19 +219,15 @@ export default function Home() {
               <Link
                 href="/import"
                 className="h-8 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold flex items-center"
-                title="Import .ics"
               >
                 Import
               </Link>
-
               <Link
                 href="/settings"
                 className="h-8 px-5 rounded-full border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold flex items-center"
-                title="Settings"
               >
                 Settings
               </Link>
-
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -252,7 +235,6 @@ export default function Home() {
                 className="w-80 h-8 rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
                 aria-label="Search"
               />
-
               <button
                 type="button"
                 onClick={() => setFiltersOpen((v) => !v)}
@@ -261,12 +243,11 @@ export default function Home() {
                 className="h-8 w-8 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm"
                 title="Filters"
               >
-                ⚙️
+                <span className="sr-only">Filters</span>⚙️
               </button>
             </div>
           </div>
 
-          {/* Filters panel */}
           {filtersOpen && (
             <div
               id="filters-panel"
@@ -297,7 +278,6 @@ export default function Home() {
                     })}
                   </div>
                 </div>
-
                 <button
                   onClick={clearFilters}
                   className="h-8 px-3 rounded-md border border-gray-300 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-800"
@@ -309,25 +289,24 @@ export default function Home() {
           )}
         </div>
 
-        {/* Draggable board */}
+        {/* Board */}
         <div className="mt-6">
           <ConsoleBoard items={items} onReorder={(ids) => setOrder(ids)} />
         </div>
 
-        <div className="h-10" />
-
-        {/* Create Calendar Modal */}
+        {/* Modal */}
         <CreateCalendarModal
           open={createOpen}
           onClose={(result) => {
             setCreateOpen(false);
-            // Update availableCalendars after creation
-            if (result?.created && result?.calendar) {
+            if (result?.created && result.calendar) {
               setAvailableCalendars((prev) => [...prev, result.calendar]);
             }
           }}
           user={user}
         />
+
+        <div className="h-10" />
       </div>
     </main>
   );

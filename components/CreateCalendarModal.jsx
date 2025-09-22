@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import DarkModeToggle from "@/components/DarkModeToggle";
 
 export default function CreateCalendarModal({ open, onClose, user }) {
   const [name, setName] = useState("");
@@ -20,88 +19,67 @@ export default function CreateCalendarModal({ open, onClose, user }) {
 
   if (!open) return null;
 
-  async function create() {
-    if (!user) return;
-    const n = name.trim();
-    if (!n) return;
-
-    setSaving(true);
+  const handleCreate = async () => {
+    if (!user || !name.trim()) {
+      onClose?.({ created: false });
+      return;
+    }
     try {
+      setSaving(true);
       const docRef = await addDoc(collection(db, "calendars"), {
-        name: n,
+        name: name.trim(),
         color,
         ownerId: user.uid,
-        members: [user.uid],
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       });
+      const calendar = { id: docRef.id, name: name.trim(), color };
+      onClose?.({ created: true, calendar });
+    } catch (e) {
+      console.error(e);
+      onClose?.({ created: false, error: String(e) });
+    } finally {
       setSaving(false);
-      // Return the new calendar object to parent
-      onClose?.({
-        created: true,
-        calendar: {
-          id: docRef.id,
-          name: n,
-          color,
-          ownerId: user.uid,
-          members: [user.uid],
-        },
-      });
-    } catch (err) {
-      setSaving(false);
-      onClose?.();
     }
-  }
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="w-[420px] rounded-2xl border border-gray-200 bg-white p-5 shadow-lg dark:bg-gray-900 dark:border-gray-700">
-        <h3 className="text-lg font-semibold mb-3 dark:text-gray-100">
-          Create calendar
-        </h3>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+        <h3 className="text-lg font-semibold mb-3">Create calendar</h3>
 
         <div className="space-y-3">
           <div>
-            <label className="text-sm text-gray-600 dark:text-gray-300">
-              Name
-            </label>
+            <label className="text-sm block mb-1">Name</label>
             <input
-              className="mt-1 w-full h-9 rounded-lg border border-gray-300 px-3 text-sm bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-              placeholder="e.g. Family, Work, Study…"
+              className="w-full h-9 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Work"
             />
           </div>
 
           <div>
-            <label className="text-sm text-gray-600 dark:text-gray-300">
-              Color
-            </label>
+            <label className="text-sm block mb-1">Color</label>
             <input
               type="color"
-              className="mt-1 h-9 w-16 rounded border border-gray-300 bg-white p-1 dark:bg-gray-800 dark:border-gray-700"
+              className="h-9 w-16 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800"
               value={color}
               onChange={(e) => setColor(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-4 flex justify-end gap-2">
           <button
-            className="h-9 px-3 rounded-lg border border-gray-300 bg-white text-sm dark:bg-gray-800 dark:border-gray-700"
-            onClick={() => onClose?.()}
-            disabled={saving}
+            onClick={() => onClose?.({ created: false })}
+            className="h-9 px-3 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm"
           >
             Cancel
           </button>
           <button
-            className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-60"
-            onClick={create}
+            onClick={handleCreate}
             disabled={saving}
+            className="h-9 px-3 rounded-md border border-indigo-400 bg-indigo-50 dark:border-indigo-600 dark:bg-indigo-900/30 text-sm font-semibold disabled:opacity-50"
           >
             {saving ? "Creating…" : "Create"}
           </button>

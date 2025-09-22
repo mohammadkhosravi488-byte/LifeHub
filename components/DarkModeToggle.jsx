@@ -1,38 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 export default function DarkModeToggle() {
-  const { theme, setTheme, systemTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-
   useEffect(() => setMounted(true), []);
 
-  const current = mounted ? (theme === "system" ? systemTheme : theme) : "light";
-  const isDark = current === "dark";
+  if (!mounted) return null;
 
-  if (!mounted) {
-    // Avoid hydration mismatch
-    return (
-      <button
-        aria-label="Toggle theme"
-        className="h-8 px-3 rounded-md border border-gray-300 bg-white text-sm"
-        disabled
-      >
-        Theme
-      </button>
-    );
-  }
+  const current = theme ?? resolvedTheme;
+  const isDark = current === "dark";
 
   return (
     <button
-      onClick={toggle}
-      className="h-8 px-3 rounded-full border border-gray-300 bg-white text-sm font-semibold"
-      title={mode === "dark" ? "Switch to light" : "Switch to dark"}
+      type="button"
+      aria-pressed={isDark}
       aria-label="Toggle dark mode"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      className="h-8 px-3 rounded-md border border-gray-300 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-800"
     >
-      {mode === "dark" ? "🌙 Dark" : "☀️ Light"}
+      {isDark ? "🌙 Dark" : "☀️ Light"}
     </button>
   );
 }
