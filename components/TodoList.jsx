@@ -67,6 +67,12 @@ export default function TodoList({
   const visible = useMemo(() => {
     let list = tasks;
 
+    // Default to ["main"] if selectedCalendarIds is empty
+    const effectiveCalendarIds =
+      selectedCalendarIds && selectedCalendarIds.length
+        ? selectedCalendarIds
+        : ["main"];
+
     // calendarFilter: main means calendarId is "main" or undefined/null
     if (calendarFilter && calendarFilter !== "all") {
       if (calendarFilter === "main") {
@@ -78,8 +84,8 @@ export default function TodoList({
       }
     }
 
-    if (selectedCalendarIds?.length) {
-      const set = new Set(selectedCalendarIds);
+    if (effectiveCalendarIds?.length) {
+      const set = new Set(effectiveCalendarIds);
       list = list.filter((t) => set.has(t.calendarId || "main"));
     }
 

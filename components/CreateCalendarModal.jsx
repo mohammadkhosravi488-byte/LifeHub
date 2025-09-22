@@ -1,21 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { db } from "@/lib/firebase";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import DarkModeToggle from "@/components/DarkModeToggle";
 
-export default function CreateCalendarModal({ open, onClose }) {
-  const [user, setUser] = useState(null);
+export default function CreateCalendarModal({ open, onClose, user }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#4f46e5");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
 
   useEffect(() => {
     if (open) {
@@ -33,16 +26,31 @@ export default function CreateCalendarModal({ open, onClose }) {
     if (!n) return;
 
     setSaving(true);
-    await addDoc(collection(db, "calendars"), {
-      name: n,
-      color,
-      ownerId: user.uid,
-      members: [user.uid],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    setSaving(false);
-    onClose?.();
+    try {
+      const docRef = await addDoc(collection(db, "calendars"), {
+        name: n,
+        color,
+        ownerId: user.uid,
+        members: [user.uid],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setSaving(false);
+      // Return the new calendar object to parent
+      onClose?.({
+        created: true,
+        calendar: {
+          id: docRef.id,
+          name: n,
+          color,
+          ownerId: user.uid,
+          members: [user.uid],
+        },
+      });
+    } catch (err) {
+      setSaving(false);
+      onClose?.();
+    }
   }
 
   return (
@@ -52,11 +60,15 @@ export default function CreateCalendarModal({ open, onClose }) {
       aria-modal="true"
     >
       <div className="w-[420px] rounded-2xl border border-gray-200 bg-white p-5 shadow-lg dark:bg-gray-900 dark:border-gray-700">
-        <h3 className="text-lg font-semibold mb-3 dark:text-gray-100">Create calendar</h3>
+        <h3 className="text-lg font-semibold mb-3 dark:text-gray-100">
+          Create calendar
+        </h3>
 
         <div className="space-y-3">
           <div>
-            <label className="text-sm text-gray-600 dark:text-gray-300">Name</label>
+            <label className="text-sm text-gray-600 dark:text-gray-300">
+              Name
+            </label>
             <input
               className="mt-1 w-full h-9 rounded-lg border border-gray-300 px-3 text-sm bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
               placeholder="e.g. Family, Work, Study…"
@@ -66,7 +78,9 @@ export default function CreateCalendarModal({ open, onClose }) {
           </div>
 
           <div>
-            <label className="text-sm text-gray-600 dark:text-gray-300">Color</label>
+            <label className="text-sm text-gray-600 dark:text-gray-300">
+              Color
+            </label>
             <input
               type="color"
               className="mt-1 h-9 w-16 rounded border border-gray-300 bg-white p-1 dark:bg-gray-800 dark:border-gray-700"

@@ -321,7 +321,10 @@ export default function Home() {
           open={createOpen}
           onClose={(result) => {
             setCreateOpen(false);
-            // Optionally: toast(result?.created ? "Calendar created" : "Canceled")
+            // Update availableCalendars after creation
+            if (result?.created && result?.calendar) {
+              setAvailableCalendars((prev) => [...prev, result.calendar]);
+            }
           }}
           user={user}
         />
