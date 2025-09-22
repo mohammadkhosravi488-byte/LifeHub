@@ -1,65 +1,72 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { db, auth } from "@/lib/firebase";
-import { useAuthState } from "react-firebase-hooks/auth";
+import { useEffect, useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
-  addDoc,
-  deleteDoc,
-  doc,
   onSnapshot,
   query,
-  where,
+  orderBy,
+  addDoc,
+  Timestamp,
   updateDoc,
+  doc,
 } from "firebase/firestore";
 
 export default function TodoList() {
-  const [user] = useAuthState(auth);
+  const [user, setUser] = useState(null);
   const [todos, setTodos] = useState([]);
   const [newTodo, setNewTodo] = useState("");
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "todos"), where("uid", "==", user.uid));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setTodos(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    const q = query(
+      collection(db, "users", user.uid, "todos"),
+      orderBy("createdAt", "desc")
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setTodos(list);
     });
     return () => unsub();
   }, [user]);
 
-  const addTodo = async () => {
+  const handleAddTodo = async () => {
     if (!newTodo.trim() || !user) return;
-    await addDoc(collection(db, "todos"), {
+    await addDoc(collection(db, "users", user.uid, "todos"), {
       text: newTodo,
-      done: false,
-      uid: user.uid,
-      createdAt: Date.now(),
+      completed: false,
+      createdAt: Timestamp.now(),
+      calendarId: "main",
     });
     setNewTodo("");
   };
 
-  const toggleDone = async (id, done) => {
-    await updateDoc(doc(db, "todos", id), { done: !done });
-  };
-
-  const deleteTodo = async (id) => {
-    await deleteDoc(doc(db, "todos", id));
+  const toggleComplete = async (id, current) => {
+    if (!user) return;
+    const ref = doc(db, "users", user.uid, "todos", id);
+    await updateDoc(ref, { completed: !current });
   };
 
   if (!user) return <p className="text-gray-500">Sign in to manage todos.</p>;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+      <div className="flex gap-2 mb-3">
         <input
           value={newTodo}
           onChange={(e) => setNewTodo(e.target.value)}
-          placeholder="New task..."
-          className="flex-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-1 text-sm"
+          placeholder="New task"
+          className="flex-1 rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1 text-sm"
         />
         <button
-          onClick={addTodo}
+          onClick={handleAddTodo}
           className="px-3 rounded-md bg-indigo-600 text-white text-sm"
         >
           Add
@@ -67,24 +74,23 @@ export default function TodoList() {
       </div>
 
       <ul className="space-y-2">
-        {todos.map((t) => (
+        {todos.map((td) => (
           <li
-            key={t.id}
-            className="flex justify-between items-center px-3 py-1 rounded-md border border-gray-200 dark:border-neutral-700"
+            key={td.id}
+            className="flex items-center justify-between px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded"
           >
             <span
-              onClick={() => toggleDone(t.id, t.done)}
-              className={`flex-1 cursor-pointer ${
-                t.done ? "line-through text-gray-500" : ""
+              className={`text-sm ${
+                td.completed ? "line-through text-gray-500" : "text-gray-800 dark:text-gray-100"
               }`}
             >
-              {t.text}
+              {td.text}
             </span>
             <button
-              onClick={() => deleteTodo(t.id)}
-              className="text-red-500 text-xs ml-2"
+              onClick={() => toggleComplete(td.id, td.completed)}
+              className="text-xs text-indigo-600 dark:text-indigo-400"
             >
-              ✕
+              {td.completed ? "Undo" : "Done"}
             </button>
           </li>
         ))}
