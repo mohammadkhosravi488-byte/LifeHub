@@ -98,18 +98,6 @@ export default function CalendarYear({
     return () => unsub();
   }, [user]);
 
-const addEvent = async (monthIndex) => {
-    if (!newEvent.trim() || !user) return;
-    const date = new Date(year, monthIndex, 1);
-    await addDoc(collection(db, "users", user.uid, "events"), {
-      title: newEvent,
-      start: Timestamp.fromDate(date),
-      end: Timestamp.fromDate(date),
-      createdAt: Timestamp.now(),
-    });
-    setNewEvent("");
-  };
-
   const activeCalendars = useMemo(() => {
     if (calendarFilter === "all") return null;
     if (calendarFilter !== "main" && selectedCalendarIds?.length) {

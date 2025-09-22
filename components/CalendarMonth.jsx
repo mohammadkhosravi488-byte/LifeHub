@@ -2,279 +2,148 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
-  onSnapshot,
+  getDocs,
   orderBy,
   query,
   where,
   Timestamp,
-  addDoc,
 } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
-// ------------------ Helpers ------------------
 function startOfMonth(d) {
   const x = new Date(d.getFullYear(), d.getMonth(), 1);
-  x.setHours(0, 0, 0, 0);
+  x.setHours(0,0,0,0);
   return x;
 }
 function endOfMonth(d) {
-  const x = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  x.setHours(23, 59, 59, 999);
+  const x = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
   return x;
 }
 function startOfWeek(d) {
+  const day = (d.getDay() + 6) % 7; // Mon=0
   const x = new Date(d);
-  const day = x.getDay(); // 0 Sun
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
+  x.setDate(d.getDate() - day);
+  x.setHours(0,0,0,0);
   return x;
-}
-function addDays(d, n) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-function toDate(val) {
-  if (!val) return null;
-  if (val instanceof Date) return val;
-  if (val.toDate) return val.toDate();
-  return new Date(val);
-}
-function byCalendarColor(calendarId, fallback = "#818cf8") {
-  if (calendarId === "main") return "#4f46e5";
-  return fallback;
 }
 
-// ------------------ Component ------------------
 export default function CalendarMonth({
-  currentDate = new Date(),
+  date,
   calendarFilter = "main",
   selectedCalendarIds = [],
 }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
-  const [todos, setTodos] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // new event input
-  const [newEvent, setNewEvent] = useState("");
+  const monthStart = startOfMonth(date);
+  const monthEnd = endOfMonth(date);
 
+  // fetch month events (basic)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-
-  // --- Fetch events ---
   useEffect(() => {
     if (!user) return;
-    const qEv = query(
-      collection(db, "users", user.uid, "events"),
-      where("start", ">=", Timestamp.fromDate(monthStart)),
-      where("start", "<=", Timestamp.fromDate(monthEnd)),
-      orderBy("start", "asc")
-    );
-    const unsub = onSnapshot(qEv, (snap) => {
-      const list = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          title: data.title || "(no title)",
-          start: toDate(data.start),
-          end: toDate(data.end),
-          calendarId: data.calendarId || "main",
-          priority: data.priority || "none",
-        };
-      });
-      setEvents(list);
-    });
-    return () => unsub();
-  }, [user, monthStart.getTime(), monthEnd.getTime()]);
+    (async () => {
+      setLoading(true);
+      try {
+        const col = collection(db, "users", user.uid, "events");
+        // Basic time-range query; if you see “requires index” in console,
+        // create the suggested index in Firebase console.
+        let q = query(
+          col,
+          where("start", ">=", Timestamp.fromDate(monthStart)),
+          where("start", "<=", Timestamp.fromDate(monthEnd)),
+          orderBy("start", "asc")
+        );
+        const snap = await getDocs(q);
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-  // --- Fetch todos ---
-  useEffect(() => {
-    if (!user) return;
-    const qTd = query(
-      collection(db, "users", user.uid, "todos"),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(qTd, (snap) => {
-      const list = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          title: data.text || "(untitled task)",
-          due: toDate(data.due),
-          completed: !!data.completed,
-          calendarId: data.calendarId || "main",
-          priority: data.priority || "none",
-        };
-      });
-      setTodos(list);
-    });
-    return () => unsub();
-  }, [user]);
+        // Apply calendar filters client-side
+        const allowIds = selectedCalendarIds.length
+          ? new Set(selectedCalendarIds)
+          : null;
+        const filtered = rows.filter((e) => {
+          const cid = e.calendarId || "main";
+          if (calendarFilter !== "all" && cid !== calendarFilter) return false;
+          if (allowIds && !allowIds.has(cid)) return false;
+          return true;
+        });
 
-  // --- Add event ---
-  const handleAddEvent = async () => {
-    if (!newEvent.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "events"), {
-      title: newEvent,
-      start: Timestamp.fromDate(new Date()), // today
-      end: Timestamp.fromDate(new Date()),
-      calendarId: "main",
-      priority: "none",
-      createdAt: Timestamp.now(),
-    });
-    setNewEvent("");
-  };
+        setEvents(filtered);
+      } catch (e) {
+        console.error("CalendarMonth query failed", e);
+        setEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [user, monthStart.getTime(), monthEnd.getTime(), calendarFilter, JSON.stringify(selectedCalendarIds)]);
 
-  // --- Active calendars ---
-  const activeCalendars = useMemo(() => {
-    if (calendarFilter === "all") return null;
-    if (calendarFilter !== "main" && selectedCalendarIds?.length) {
-      return new Set(selectedCalendarIds);
+  // compute cells (Mon–Sun)
+  const weeks = useMemo(() => {
+    const firstVisible = startOfWeek(new Date(monthStart));
+    const cells = [];
+    let cursor = new Date(firstVisible);
+    // 6 weeks grid ensures full month
+    for (let i = 0; i < 42; i++) {
+      cells.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
     }
-    return new Set([calendarFilter]);
-  }, [calendarFilter, selectedCalendarIds]);
+    return cells;
+  }, [monthStart.getTime()]);
 
-  const monthCells = useMemo(() => {
-    const firstDay = startOfWeek(startOfMonth(currentDate));
-    return Array.from({ length: 42 }, (_, i) => addDays(firstDay, i));
-  }, [currentDate]);
-
-  const itemsByDay = useMemo(() => {
+  // group counts per day
+  const countByDayKey = useMemo(() => {
     const map = new Map();
-    const inCal = (cid) => !activeCalendars || activeCalendars.has(cid || "main");
-
-    const addEvent = async (monthIndex) => {
-    if (!newEvent.trim() || !user) return;
-    const date = new Date(year, monthIndex, 1);
-    await addDoc(collection(db, "users", user.uid, "events"), {
-      title: newEvent,
-      start: Timestamp.fromDate(date),
-      end: Timestamp.fromDate(date),
-      createdAt: Timestamp.now(),
-    });
-    setNewEvent("");
-  };
-
-    events.forEach((ev) => {
-      if (!ev.start || !inCal(ev.calendarId)) return;
-      const key = ev.start.toISOString().slice(0, 10);
-      if (!map.has(key)) map.set(key, { events: [], todos: [] });
-      map.get(key).events.push(ev);
-    });
-
-    todos.forEach((td) => {
-      if (!inCal(td.calendarId) || !td.due) return;
-      const key = td.due.toISOString().slice(0, 10);
-      if (!map.has(key)) map.set(key, { events: [], todos: [] });
-      map.get(key).todos.push(td);
-    });
-
+    for (const ev of events) {
+      const d = ev.start?.toDate ? ev.start.toDate() : new Date(ev.start);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    }
     return map;
-  }, [events, todos, activeCalendars]);
-
-  // ------------------ Render ------------------
-  if (!user)
-    return <p className="text-gray-500">Sign in to see your calendar.</p>;
+  }, [events]);
 
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-          {currentDate.toLocaleString(undefined, { month: "long", year: "numeric" })}
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            value={newEvent}
-            onChange={(e) => setNewEvent(e.target.value)}
-            placeholder="New event title"
-            className="rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1 text-sm"
-          />
-          <button
-            onClick={handleAddEvent}
-            className="px-3 rounded-md bg-indigo-600 text-white text-sm"
-          >
-            Add Event
-          </button>
-        </div>
+    <div className="w-full">
+      <div className="grid grid-cols-7 text-xs font-semibold text-gray-500 mb-2">
+        {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((d) => (
+          <div key={d} className="px-2 py-1">{d}</div>
+        ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((w) => (
-          <div
-            key={w}
-            className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-semibold px-2 py-2"
-          >
-            {w}
-          </div>
-        ))}
-
-        
-
-        {monthCells.map((day) => {
-          const inMonth = day.getMonth() === currentDate.getMonth();
-          const key = day.toISOString().slice(0, 10);
-          const bucket = itemsByDay.get(key) || { events: [], todos: [] };
-
+      <div className="grid grid-cols-7 gap-2">
+        {weeks.map((d, idx) => {
+          const inMonth = d.getMonth() === date.getMonth();
+          const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+          const count = countByDayKey.get(key) || 0;
           return (
             <div
-              key={key}
-              className={`min-h-28 bg-white dark:bg-gray-900 px-2 py-2 ${
-                !inMonth ? "opacity-50" : ""
-              }`}
+              key={idx}
+              className={[
+                "min-h-[96px] rounded-xl border p-2 flex flex-col",
+                inMonth ? "bg-white border-gray-200" : "bg-gray-50 border-gray-200/70"
+              ].join(" ")}
             >
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                  {day.getDate()}
+              <div className="text-sm font-semibold text-gray-700">
+                {d.getDate()}
+              </div>
+              {loading ? (
+                <div className="mt-2 text-xs text-gray-400">Loading…</div>
+              ) : count > 0 ? (
+                <div className="mt-1 text-xs">
+                  <span className="inline-block rounded-full border border-indigo-300 bg-indigo-50 px-2 py-[2px]">
+                    {count} {count === 1 ? "event" : "events"}
+                  </span>
                 </div>
-                {(bucket.events.length > 0 || bucket.todos.length > 0) && (
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                    {bucket.events.length} ev • {bucket.todos.length} td
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-2 space-y-1">
-                {[...bucket.events, ...bucket.todos].slice(0, 4).map((it) => {
-                  const isTodo = "completed" in it;
-                  const bg = byCalendarColor(it.calendarId, "#93c5fd");
-                  const borderColor =
-                    it.priority === "high"
-                      ? "border-red-500"
-                      : it.priority === "medium"
-                      ? "border-green-500"
-                      : it.priority === "low"
-                      ? "border-blue-500"
-                      : "border-gray-300 dark:border-gray-600";
-
-                  return (
-                    <div
-                      key={`${isTodo ? "td" : "ev"}-${it.id}`}
-                      className="text-xs font-medium rounded-md px-2 py-1 border text-gray-900 dark:text-white"
-                      style={{ backgroundColor: bg }}
-                    >
-                      <div className={`rounded-sm border-2 ${borderColor} px-1`}>
-                        {isTodo ? "✓ " : ""}
-                        {it.title}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {bucket.events.length + bucket.todos.length > 4 && (
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                    +{bucket.events.length + bucket.todos.length - 4} more
-                  </div>
-                )}
-              </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-gray-300">No events</div>
+              )}
             </div>
           );
         })}

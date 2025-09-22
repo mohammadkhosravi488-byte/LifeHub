@@ -1,23 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
+  addDoc,
+  serverTimestamp,
   onSnapshot,
   query,
   orderBy,
-  addDoc,
-  Timestamp,
   updateDoc,
   doc,
+  deleteDoc,
 } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
-export default function TodoList() {
+export default function TodoList({
+  calendarFilter = "main",
+  search = "",
+  selectedCalendarIds = [],
+}) {
   const [user, setUser] = useState(null);
-  const [todos, setTodos] = useState([]);
-  const [newTodo, setNewTodo] = useState("");
+  const [text, setText] = useState("");
+  const [items, setItems] = useState([]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -25,75 +30,116 @@ export default function TodoList() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, "users", user.uid, "todos"),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodos(list);
+    if (!user) return setItems([]);
+    const ref = collection(db, "users", user.uid, "tasks");
+    const qref = query(ref, orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(qref, (snap) => {
+      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, [user]);
 
-  const handleAddTodo = async () => {
-    if (!newTodo.trim() || !user) return;
-    await addDoc(collection(db, "users", user.uid, "todos"), {
-      text: newTodo,
-      completed: false,
-      createdAt: Timestamp.now(),
-      calendarId: "main",
+  const visible = useMemo(() => {
+    const textq = search.trim().toLowerCase();
+    const selected = new Set(selectedCalendarIds || []);
+    return items.filter((t) => {
+      const calId = t.calendarId || "main";
+
+      // Tab filter (keep default "main" simple)
+      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
+
+      // Multi-select chips (only apply if user actually picked some)
+      if (selected.size > 0 && !selected.has(calId)) return false;
+
+      if (textq) {
+        const hay = `${t.title || ""}`.toLowerCase();
+        if (!hay.includes(textq)) return false;
+      }
+      return true;
     });
-    setNewTodo("");
-  };
+  }, [items, calendarFilter, search, selectedCalendarIds]);
 
-  const toggleComplete = async (id, current) => {
+  async function addTask() {
+    if (!user || !text.trim()) return;
+    const ref = collection(db, "users", user.uid, "tasks");
+    await addDoc(ref, {
+      title: text.trim(),
+      completed: false,
+      calendarId: calendarFilter || "main",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    setText("");
+  }
+
+  async function toggleTask(t) {
     if (!user) return;
-    const ref = doc(db, "users", user.uid, "todos", id);
-    await updateDoc(ref, { completed: !current });
-  };
+    await updateDoc(doc(db, "users", user.uid, "tasks", t.id), {
+      completed: !t.completed,
+      updatedAt: serverTimestamp(),
+    });
+  }
 
-  if (!user) return <p className="text-gray-500">Sign in to manage todos.</p>;
+  async function removeTask(t) {
+    if (!user) return;
+    await deleteDoc(doc(db, "users", user.uid, "tasks", t.id));
+  }
+
+  if (!user) {
+    return <p className="text-gray-600 text-sm">Sign in to manage to-dos.</p>;
+  }
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+    <div>
       <div className="flex gap-2 mb-3">
         <input
-          value={newTodo}
-          onChange={(e) => setNewTodo(e.target.value)}
-          placeholder="New task"
-          className="flex-1 rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1 text-sm"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a task…"
+          className="flex-1 h-10 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-400"
         />
         <button
-          onClick={handleAddTodo}
-          className="px-3 rounded-md bg-indigo-600 text-white text-sm"
+          onClick={addTask}
+          className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold"
         >
           Add
         </button>
       </div>
 
-      <ul className="space-y-2">
-        {todos.map((td) => (
-          <li
-            key={td.id}
-            className="flex items-center justify-between px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded"
-          >
-            <span
-              className={`text-sm ${
-                td.completed ? "line-through text-gray-500" : "text-gray-800 dark:text-gray-100"
-              }`}
-            >
-              {td.text}
-            </span>
-            <button
-              onClick={() => toggleComplete(td.id, td.completed)}
-              className="text-xs text-indigo-600 dark:text-indigo-400"
-            >
-              {td.completed ? "Undo" : "Done"}
-            </button>
+      <ul className="divide-y divide-gray-200">
+        {visible.map((t) => (
+          <li key={t.id} className="py-2 flex items-center justify-between">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={!!t.completed}
+                onChange={() => toggleTask(t)}
+              />
+              <span
+                className={[
+                  "text-sm",
+                  t.completed ? "line-through text-gray-400" : "text-gray-900",
+                ].join(" ")}
+              >
+                {t.title}
+              </span>
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">
+                {t.calendarId || "main"}
+              </span>
+              <button
+                className="text-xs text-red-600"
+                onClick={() => removeTask(t)}
+              >
+                delete
+              </button>
+            </div>
           </li>
         ))}
+        {visible.length === 0 && (
+          <li className="py-2 text-sm text-gray-500">Nothing matches.</li>
+        )}
       </ul>
     </div>
   );
