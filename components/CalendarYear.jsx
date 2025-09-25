@@ -36,6 +36,7 @@ export default function CalendarYear({
   currentDate = new Date(),
   calendarFilter = "main",
   selectedCalendarIds = [],
+  onCalendarsDiscovered,
 }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
@@ -98,11 +99,26 @@ export default function CalendarYear({
     return () => unsub();
   }, [user]);
 
+  useEffect(() => {
+    if (!onCalendarsDiscovered) return;
+    const set = new Map();
+    set.set("main", { id: "main", name: "Main" });
+    events.forEach((ev) => {
+      const id = ev.calendarId || "main";
+      if (!set.has(id)) set.set(id, { id, name: id });
+    });
+    todos.forEach((td) => {
+      const id = td.calendarId || "main";
+      if (!set.has(id)) set.set(id, { id, name: id });
+    });
+    onCalendarsDiscovered(Array.from(set.values()));
+  }, [events, todos, onCalendarsDiscovered]);
+
   const activeCalendars = useMemo(() => {
-    if (calendarFilter === "all") return null;
-    if (calendarFilter !== "main" && selectedCalendarIds?.length) {
+    if (selectedCalendarIds?.length) {
       return new Set(selectedCalendarIds);
     }
+    if (calendarFilter === "all") return null;
     return new Set([calendarFilter]);
   }, [calendarFilter, selectedCalendarIds]);
 

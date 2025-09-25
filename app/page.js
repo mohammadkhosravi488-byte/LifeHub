@@ -180,7 +180,7 @@ export default function Home() {
 
     const valid = order.filter((id) => cards[id]);
     return (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]);
-  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
+  }, [order, viewMode, calendarFilter, selectedCalendarIds, search]);
 
   if (!mounted) return null;
 

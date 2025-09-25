@@ -1,39 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
+import { useEffect, useMemo, useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { useAuthState } from "react-firebase-hooks/auth";
-import { auth } from "@/lib/firebase";
+
+const BASE_CALENDARS = Object.freeze([{ id: "main", name: "Main" }]);
 
 export default function CalendarTabs({ value, onChange, onCalendarsDiscovered }) {
-  const [user] = useAuthState(auth);
-  const [calendars, setCalendars] = useState([{ id: "main", name: "Main" }]);
+  const [user, setUser] = useState(null);
+  const [calendars, setCalendars] = useState(() => [...BASE_CALENDARS]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (!user) {
-      setCalendars([{ id: "main", name: "Main" }]);
+      setCalendars(() => [...BASE_CALENDARS]);
       return;
     }
 
     const q = query(collection(db, "calendars"), where("ownerId", "==", user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = [{ id: "main", name: "Main" }];
-      snap.forEach((doc) => rows.push({ id: doc.id, ...doc.data() }));
-      setCalendars(rows);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const rows = [...BASE_CALENDARS];
+        snap.forEach((doc) => rows.push({ id: doc.id, ...doc.data() }));
+        setCalendars(rows);
+      },
+      (error) => {
+        console.error("Failed to load calendars", error);
+        setCalendars(() => [...BASE_CALENDARS]);
+      }
+    );
 
     return () => unsub();
   }, [user]);
 
-  // 🔑 Important: call onCalendarsDiscovered in an effect, not during render
+  const tabs = useMemo(() => {
+    const unique = new Map();
+    calendars.forEach((c) => {
+      if (!unique.has(c.id)) unique.set(c.id, c);
+    });
+    const arr = Array.from(unique.values());
+    return [{ id: "all", name: "All" }, ...arr];
+  }, [calendars]);
+
   useEffect(() => {
-    if (onCalendarsDiscovered) onCalendarsDiscovered(calendars);
+    if (!onCalendarsDiscovered) return;
+    const discovered = calendars.map((c) => ({ id: c.id, name: c.name }));
+    onCalendarsDiscovered(discovered);
   }, [calendars, onCalendarsDiscovered]);
 
   return (
     <div className="flex gap-2">
-      {calendars.map((c) => (
+      {tabs.map((c) => (
         <button
           key={c.id}
           onClick={() => onChange(c.id)}
