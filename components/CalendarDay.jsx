@@ -1,17 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  Timestamp,
-} from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
 import AddEvent from "@/components/AddEvent";
+import { useLifehubData } from "@/lib/data-context";
 
 const PX_PER_HOUR = 60; // 1h = 60px as spec
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
@@ -29,63 +20,42 @@ function endOfDay(d) {
 }
 
 export default function CalendarDay({
-  calendarFilter = "main",
+  calendarFilter = "all",
   selectedCalendarIds = [],
   onCalendarsDiscovered = () => {},
 }) {
-  const [user, setUser] = useState(null);
+  const { events } = useLifehubData();
   const [date, setDate] = useState(() => new Date());
-  const [events, setEvents] = useState([]);
   const [adding, setAdding] = useState(false);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
+  const { filtered, discovered } = useMemo(() => {
+    const start = startOfDay(date);
+    const end = endOfDay(date);
+    const selected = selectedCalendarIds.length
+      ? new Set(selectedCalendarIds)
+      : null;
 
-  // Query events for the chosen day (range on 'start' only => no composite index)
-  useEffect(() => {
-    if (!user) return setEvents([]);
-    const from = startOfDay(date);
-    const to = endOfDay(date);
-
-    const ref = collection(db, "users", user.uid, "events");
-    const qref = query(
-      ref,
-      where("start", ">=", Timestamp.fromDate(from)),
-      where("start", "<=", Timestamp.fromDate(to)),
-      orderBy("start", "asc")
-    );
-
-    const unsub = onSnapshot(
-      qref,
-      (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEvents(rows);
-        // surface any new calendar ids up to the page so filters show real chips
-        const found = Array.from(
-          new Set(rows.map((r) => r.calendarId || "main"))
-        )
-          .filter((id) => id !== "main")
-          .map((id) => ({ id, name: id }));
-        onCalendarsDiscovered(found);
-      },
-      (err) => {
-        console.error("Day query failed", err);
-      }
-    );
-    return () => unsub();
-  }, [user, date, onCalendarsDiscovered]);
-
-  const visible = useMemo(() => {
-    const selected = new Set(selectedCalendarIds || []);
-    return events.filter((ev) => {
-      const calId = ev.calendarId || "main";
+    const inRange = events.filter((event) => {
+      const startTime = event.start instanceof Date ? event.start : new Date(event.start);
+      if (startTime < start || startTime > end) return false;
+      const calId = event.calendarId || "main";
       if (calendarFilter !== "all" && calId !== calendarFilter) return false;
-      if (selected.size > 0 && !selected.has(calId)) return false;
+      if (selected && !selected.has(calId)) return false;
       return true;
     });
-  }, [events, calendarFilter, selectedCalendarIds]);
+
+    const discovered = Array.from(
+      new Set(inRange.map((event) => event.calendarId || "main"))
+    )
+      .filter((id) => id && id !== "main")
+      .map((id) => ({ id, name: id }));
+
+    return { filtered: inRange, discovered };
+  }, [events, date, calendarFilter, selectedCalendarIds]);
+
+  useEffect(() => {
+    onCalendarsDiscovered(discovered);
+  }, [discovered, onCalendarsDiscovered]);
 
   // positioning helpers
   const pos = useCallback((ev) => {
@@ -100,14 +70,16 @@ export default function CalendarDay({
     return { top, height };
   }, []);
 
-  const prettyDate = useMemo(() => {
-    return date.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  }, [date]);
+  const prettyDate = useMemo(
+    () =>
+      date.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    [date]
+  );
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-4">
@@ -186,7 +158,7 @@ export default function CalendarDay({
 
             {/* events */}
             <div className="relative" style={{ height: 24 * PX_PER_HOUR }}>
-              {visible.map((ev) => {
+              {filtered.map((ev) => {
                 const { top, height } = pos(ev);
                 const title = ev.summary || "(no title)";
                 const cal = ev.calendarId || "main";
@@ -217,14 +189,9 @@ export default function CalendarDay({
                   </div>
                 );
               })}
-              {user && visible.length === 0 && (
+              {filtered.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
                   No events today.
-                </div>
-              )}
-              {!user && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  Sign in to view your day.
                 </div>
               )}
             </div>

@@ -1,72 +1,69 @@
 "use client";
-import { useEffect, useState } from "react";
-import { db, auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+
+import { useEffect, useMemo, useState } from "react";
+import { useLifehubData } from "@/lib/data-context";
 
 export default function FilterSheet({ open, onClose }) {
-  const [user, setUser] = useState(null);
-  const [cals, setCals] = useState([]);
-  const [busyOnly, setBusyOnly] = useState(false);
+  const { calendars } = useLifehubData();
   const [selected, setSelected] = useState(new Set());
+  const [busyOnly, setBusyOnly] = useState(false);
 
-  useEffect(() => onAuthStateChanged(auth, setUser), []);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "calendars"), where("ownerId", "==", user.uid));
-    return onSnapshot(q, (snap) => {
-      const arr = [{ id: "main", name: "Main" }];
-      snap.forEach((d) => arr.push({ id: d.id, name: d.data().name }));
-      setCals(arr);
-    });
-  }, [user]);
+  const options = useMemo(() => {
+    const base = [{ id: "main", name: "Personal" }];
+    const unique = new Map(base.concat(calendars).map((cal) => [cal.id, cal]));
+    return Array.from(unique.values());
+  }, [calendars]);
 
   useEffect(() => {
     if (!open) return;
-    // broadcast current filters
-    const ev = new CustomEvent("lifehub:filters", {
-      detail: { calendars: Array.from(selected), busyOnly },
-    });
-    window.dispatchEvent(ev);
+    const detail = { calendars: Array.from(selected), busyOnly };
+    window.dispatchEvent(new CustomEvent("lifehub:filters", { detail }));
   }, [open, selected, busyOnly]);
 
   if (!open) return null;
 
+  const toggle = (id) => {
+    const next = new Set(selected);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelected(next);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-start justify-end">
-      <div className="w-[340px] bg-white h-full p-4 border-l border-[var(--outline-neutral)]">
+      <div className="w-[340px] bg-white dark:bg-neutral-900 h-full p-4 border-l border-gray-200 dark:border-neutral-800">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold">Filters</h3>
-          <button onClick={onClose} className="px-2 py-1 border rounded">Close</button>
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
+          <button onClick={onClose} className="px-2 py-1 border rounded text-sm">
+            Close
+          </button>
         </div>
 
         <div className="space-y-3">
           <div>
-            <div className="text-xs font-semibold text-[var(--ink-muted)] mb-1">Calendars</div>
-            {cals.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 py-1">
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Calendars</div>
+            {options.map((cal) => (
+              <label key={cal.id} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-200">
                 <input
                   type="checkbox"
-                  checked={selected.has(c.id)}
-                  onChange={(e) => {
-                    const next = new Set(selected);
-                    e.target.checked ? next.add(c.id) : next.delete(c.id);
-                    setSelected(next);
-                  }}
+                  checked={selected.has(cal.id)}
+                  onChange={() => toggle(cal.id)}
                 />
-                <span className="text-sm">{c.name}</span>
+                <span>{cal.name}</span>
               </label>
             ))}
           </div>
 
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
             <input
               type="checkbox"
               checked={busyOnly}
               onChange={(e) => setBusyOnly(e.target.checked)}
             />
-            <span className="text-sm">Only busy items</span>
+            Only show busy days
           </label>
         </div>
       </div>
