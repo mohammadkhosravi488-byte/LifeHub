@@ -1,42 +1,65 @@
 "use client";
 
-import { useAuthState } from "react-firebase-hooks/auth";
-import { auth } from "@/lib/firebase";
-import { signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
-import DarkModeToggle from "@/components/DarkModeToggle"; // ✅ ADD THIS IMPORT
+import { useState, useEffect } from "react";
+import { auth, googleProvider } from "@/lib/firebase";
+import {
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 
 export default function AuthButtons() {
-  const [user] = useAuthState(auth);
+  const [user, setUser] = useState(null);
 
-  const login = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Sign-in failed", error);
+      alert("Google Sign-in failed. Check console for details.");
+    }
   };
 
-  const logout = async () => {
-    await signOut(auth);
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Sign-out failed", error);
+    }
   };
+
+  if (!user) {
+    return (
+      <button
+        onClick={handleSignIn}
+        className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium shadow hover:opacity-90"
+      >
+        Sign in with Google
+      </button>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3">
-      {/* ✅ Dark mode button goes here */}
-      <DarkModeToggle />
-
-      {!user ? (
-        <button
-          onClick={login}
-          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-        >
-          Sign in
-        </button>
-      ) : (
-        <button
-          onClick={logout}
-          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-        >
-          Sign out
-        </button>
+      {user.photoURL && (
+        <img
+          src={user.photoURL}
+          alt="avatar"
+          className="w-8 h-8 rounded-full"
+        />
       )}
+      <span className="text-sm">{user.displayName || user.email}</span>
+      <button
+        onClick={handleSignOut}
+        className="px-3 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800"
+      >
+        Sign out
+      </button>
     </div>
   );
 }
