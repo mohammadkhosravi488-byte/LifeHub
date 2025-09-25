@@ -1,81 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  Timestamp,
-  where,
-} from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-/* ---------- Shared styling + helpers (inline) ---------- */
+import AddEvent from "@/components/AddEvent";
+import { useLifehubData } from "@/lib/data-context";
+import { addDays, endOfDay, startOfDay } from "@/lib/date";
+
+const HOURS = Array.from({ length: 24 }, (_, index) => index);
+const PX_PER_HOUR = 56;
+
 const ACCENTS = [
   {
-    base:
-      "bg-indigo-50 border-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-700 dark:text-indigo-100",
-    sub: "text-indigo-500 dark:text-indigo-200/80",
-    dot: "bg-indigo-500",
+    base: "bg-indigo-100/80 border-indigo-200 text-indigo-900",
+    sub: "text-indigo-500",
   },
   {
-    base:
-      "bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-100",
-    sub: "text-emerald-500 dark:text-emerald-200/80",
-    dot: "bg-emerald-500",
+    base: "bg-emerald-100/80 border-emerald-200 text-emerald-900",
+    sub: "text-emerald-500",
   },
   {
-    base:
-      "bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-900/40 dark:border-amber-700 dark:text-amber-100",
-    sub: "text-amber-600 dark:text-amber-200/80",
-    dot: "bg-amber-500",
+    base: "bg-amber-100/80 border-amber-200 text-amber-900",
+    sub: "text-amber-500",
   },
   {
-    base:
-      "bg-rose-50 border-rose-100 text-rose-700 dark:bg-rose-900/40 dark:border-rose-700 dark:text-rose-100",
-    sub: "text-rose-500 dark:text-rose-200/80",
-    dot: "bg-rose-500",
+    base: "bg-rose-100/80 border-rose-200 text-rose-900",
+    sub: "text-rose-500",
   },
   {
-    base:
-      "bg-sky-50 border-sky-100 text-sky-700 dark:bg-sky-900/40 dark:border-sky-700 dark:text-sky-100",
-    sub: "text-sky-500 dark:text-sky-200/80",
-    dot: "bg-sky-500",
+    base: "bg-sky-100/80 border-sky-200 text-sky-900",
+    sub: "text-sky-500",
   },
 ];
 
+function ensureDate(value) {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
+}
+
 function getAccent(calendarId) {
-  const safeId = calendarId || "main";
+  const safe = calendarId || "main";
   let hash = 0;
-  for (let i = 0; i < safeId.length; i++) hash = (hash + safeId.charCodeAt(i)) % ACCENTS.length;
+  for (let index = 0; index < safe.length; index += 1) {
+    hash = (hash + safe.charCodeAt(index)) % ACCENTS.length;
+  }
   return ACCENTS[hash];
 }
 
-function toDate(v) {
-  if (!v) return null;
-  if (v instanceof Date) return v;
-  if (typeof v?.toDate === "function") return v.toDate();
-  return new Date(v);
+function formatRange(event) {
+  if (event.allDay) return "All day";
+  const start = ensureDate(event.start);
+  const end = ensureDate(event.end);
+  if (!start) return "";
+  const startLabel = start.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (!end) return startLabel;
+  const endLabel = end.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${startLabel} – ${endLabel}`;
 }
-
-function dayStartEnd(d) {
-  const start = new Date(d);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(d);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
-}
-
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-/* ------------------------------------------------------- */
 
 export default function CalendarDay({
   calendarFilter = "all",
@@ -83,204 +69,198 @@ export default function CalendarDay({
   search = "",
   onCalendarsDiscovered = () => {},
 }) {
-  const [user, setUser] = useState(null);
-  const [date, setDate] = useState(() => new Date());
-  const [events, setEvents] = useState([]);
+  const { events } = useLifehubData();
+  const [referenceDate, setReferenceDate] = useState(() => startOfDay(new Date()));
   const [adding, setAdding] = useState(false);
 
+  const bounds = useMemo(() => {
+    const start = startOfDay(referenceDate);
+    const end = endOfDay(referenceDate);
+    return { start, end };
+  }, [referenceDate]);
+
+  const visibleEvents = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const selected = selectedCalendarIds.length
+      ? new Set(selectedCalendarIds)
+      : null;
+
+    return events
+      .map((event) => ({
+        ...event,
+        start: ensureDate(event.start),
+        end: ensureDate(event.end) || ensureDate(event.start),
+      }))
+      .filter((event) => {
+        if (!event.start) return false;
+        const calendarId = event.calendarId || "main";
+        if (calendarFilter !== "all" && calendarId !== calendarFilter) return false;
+        if (selected && selected.size > 0 && !selected.has(calendarId)) return false;
+        if (event.end < bounds.start || event.start > bounds.end) return false;
+
+        if (query) {
+          const haystack = `${event.summary || ""} ${event.description || ""} ${
+            event.location || ""
+          }`.toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.start - b.start);
+  }, [
+    events,
+    calendarFilter,
+    selectedCalendarIds,
+    search,
+    bounds.start,
+    bounds.end,
+  ]);
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
+    const discovered = Array.from(
+      new Set(visibleEvents.map((event) => event.calendarId || "main"))
+    )
+      .filter((id) => id && id !== "main")
+      .map((id) => ({ id, name: id }));
+    onCalendarsDiscovered(discovered);
+  }, [visibleEvents, onCalendarsDiscovered]);
 
-  // Query events for the chosen day (range on 'start' only => no composite index)
-  useEffect(() => {
-    if (!user) return setEvents([]);
-    const from = startOfDay(date);
-    const to = endOfDay(date);
+  const position = useCallback(
+    (event) => {
+      const startMinutes = Math.max(
+        0,
+        (event.start.getTime() - bounds.start.getTime()) / 60000
+      );
+      const endMinutes = Math.min(
+        24 * 60,
+        (event.end.getTime() - bounds.start.getTime()) / 60000
+      );
+      const top = (startMinutes / 60) * PX_PER_HOUR;
+      const height = Math.max(40, ((endMinutes - startMinutes) / 60) * PX_PER_HOUR);
+      return { top, height };
+    },
+    [bounds.start]
+  );
 
-    const ref = collection(db, "users", user.uid, "events");
-    const qref = query(
-      ref,
-      where("start", ">=", Timestamp.fromDate(from)),
-      where("start", "<=", Timestamp.fromDate(to)),
-      orderBy("start", "asc")
-    );
-
-    const unsub = onSnapshot(
-      qref,
-      (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEvents(rows);
-        // surface any new calendar ids up to the page so filters show real chips
-        const found = Array.from(
-          new Set(rows.map((r) => r.calendarId || "main"))
-        )
-          .filter((id) => id !== "main")
-          .map((id) => ({ id, name: id }));
-        onCalendarsDiscovered(found);
-      },
-      (err) => {
-        console.error("Day query failed", err);
-      }
-    );
-    return () => unsub();
-  }, [user, date, onCalendarsDiscovered]);
-
-  const visible = useMemo(() => {
-    const selected = new Set(selectedCalendarIds || []);
-    return events.filter((ev) => {
-      const calId = ev.calendarId || "main";
-      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
-      if (selected.size > 0 && !selected.has(calId)) return false;
-      return true;
-    });
-  }, [events, calendarFilter, selectedCalendarIds]);
-
-  // positioning helpers
-  const pos = useCallback((ev) => {
-    const s = ev.start?.toDate?.() || new Date(ev.start);
-    const e = ev.end?.toDate?.() || (ev.end ? new Date(ev.end) : null);
-    const minutesFromMidnight = s.getHours() * 60 + s.getMinutes();
-    const top = (minutesFromMidnight / 60) * PX_PER_HOUR;
-    const endMinutes = e
-      ? e.getHours() * 60 + e.getMinutes()
-      : minutesFromMidnight + 30;
-    const height = Math.max(30, ((endMinutes - minutesFromMidnight) / 60) * PX_PER_HOUR);
-    return { top, height };
-  }, []);
-
-  const prettyDate = useMemo(() => {
-    return date.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  }, [date]);
+  const dateLabel = useMemo(
+    () =>
+      referenceDate.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      }),
+    [referenceDate]
+  );
 
   return (
-    <div className="bg-white dark:bg-neutral-950/60 border border-gray-200 dark:border-neutral-800 rounded-3xl p-5 shadow-sm">
-      {/* Header / controls */}
+    <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
             Daily overview
           </p>
-          <h2 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{dateLabel}</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">
+            {dateLabel}
+          </h2>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setReferenceDate((d) => addDays(d, -1))}
-            className="h-9 w-9 rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-lg leading-none text-gray-600 dark:text-gray-200"
+            onClick={() => setReferenceDate((current) => addDays(current, -1))}
+            className="h-9 w-9 rounded-xl border border-gray-300 bg-white text-lg text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
             aria-label="Previous day"
           >
             ‹
           </button>
           <button
             type="button"
-            onClick={() => setReferenceDate(new Date())}
-            className="h-9 px-4 rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm font-semibold text-gray-700 dark:text-gray-200"
+            onClick={() => setReferenceDate(startOfDay(new Date()))}
+            className="h-9 rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
           >
             Today
           </button>
           <button
             type="button"
-            onClick={() => setReferenceDate((d) => addDays(d, 1))}
-            className="h-9 w-9 rounded-xl border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-lg leading-none text-gray-600 dark:text-gray-200"
+            onClick={() => setReferenceDate((current) => addDays(current, 1))}
+            className="h-9 w-9 rounded-xl border border-gray-300 bg-white text-lg text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
             aria-label="Next day"
           >
             ›
           </button>
-
           <button
-            onClick={addEvent}
-            disabled={!user}
-            className="ml-3 h-9 px-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-60"
+            type="button"
+            onClick={() => setAdding(true)}
+            className="ml-3 h-9 rounded-xl bg-indigo-600 px-3 text-sm font-semibold text-white disabled:opacity-60"
           >
             ➕ Add event
           </button>
         </div>
       </div>
 
-      {/* Add event inline */}
       {adding && (
-        <div className="mb-4">
+        <div className="mb-4 mt-4">
           <AddEvent
             defaultCalendarId={calendarFilter === "all" ? "main" : calendarFilter}
-            defaultDate={date}
+            defaultDate={referenceDate}
             onClose={() => setAdding(false)}
             onCreated={() => setAdding(false)}
           />
         </div>
       )}
 
-      {/* Timeline */}
-      <div className="relative border-t border-gray-200">
+      <div className="relative mt-4 border-t border-gray-200 dark:border-neutral-800">
         <div className="grid grid-cols-[80px_1fr]">
-          {/* Time ruler */}
           <div className="pr-2">
-            {HOURS.map((h) => (
+            {HOURS.map((hour) => (
               <div
-                key={h}
-                className="h-[60px] text-right pr-1 text-xs text-gray-500 border-b border-gray-100"
+                key={hour}
+                className="h-[56px] border-b border-gray-100 pr-1 text-right text-xs text-gray-500 dark:border-neutral-800 dark:text-gray-500"
               >
-                {new Date(0, 0, 0, h).toLocaleTimeString([], {
-                  hour: "numeric",
-                })}
+                {new Date(0, 0, 0, hour).toLocaleTimeString([], { hour: "numeric" })}
               </div>
             ))}
           </div>
-
-          {/* Event canvas */}
           <div className="relative">
-            {/* hour lines */}
-            {HOURS.map((h) => (
+            {HOURS.map((hour) => (
               <div
-                key={h}
-                className="absolute left-0 right-0 border-b border-gray-100"
-                style={{ top: h * PX_PER_HOUR, height: 0 }}
+                key={`line-${hour}`}
+                className="absolute left-0 right-0 border-b border-dashed border-gray-100 dark:border-neutral-800"
+                style={{ top: hour * PX_PER_HOUR }}
               />
             ))}
-
-            {/* events */}
-            <div className="relative" style={{ height: 24 * PX_PER_HOUR }}>
-              {visible.map((ev) => {
-                const { top, height } = pos(ev);
-                const title = ev.summary || "(no title)";
-                const cal = ev.calendarId || "main";
+            <div className="relative" style={{ height: HOURS.length * PX_PER_HOUR }}>
+              {visibleEvents.map((event) => {
+                const { top, height } = position(event);
+                const accent = getAccent(event.calendarId);
                 return (
                   <div
-                    key={ev.id}
-                    className="absolute left-2 right-3 rounded-2xl"
-                    style={{
-                      top,
-                      height,
-                      background: "var(--card-bg, #eef2ff)",
-                      border: "4px solid var(--outline, #c7d2fe)",
-                      padding: "8px 10px",
-                      overflow: "hidden",
-                    }}
-                    title={title}
-                    aria-label={`${title}`}
+                    key={event.id}
+                    className={`absolute left-2 right-3 rounded-2xl border px-3 py-2 shadow-sm ${accent.base}`}
+                    style={{ top, height }}
                   >
-                    <div className="text-xs text-gray-500 mb-1">{cal}</div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {title}
+                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      {event.calendarId || "main"}
                     </div>
-                    <div className={`mt-1 text-xs ${accent.sub}`}>{timeLabel}</div>
+                    <div className="text-sm font-semibold">
+                      {event.summary || "(no title)"}
+                    </div>
+                    <div className={`mt-1 text-xs ${accent.sub}`}>
+                      {formatRange(event)}
+                    </div>
+                    {event.location && (
+                      <div className="mt-1 text-xs text-gray-600">
+                        📍 {event.location}
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              {user && visible.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  No events today.
-                </div>
-              )}
-              {!user && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  Sign in to view your day.
+
+              {visibleEvents.length === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                  No events scheduled for this day.
                 </div>
               )}
             </div>

@@ -1,150 +1,90 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  Timestamp,
-  where,
-} from "firebase/firestore";
 
-/* ---------- Shared styling + helpers (inline) ---------- */
+import { useLifehubData } from "@/lib/data-context";
+import {
+  getMonthMatrix,
+  sameDay,
+  startOfMonth,
+  startOfNextMonth,
+} from "@/lib/date";
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const ACCENTS = [
-  {
-    base:
-      "bg-indigo-50 border-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-700 dark:text-indigo-100",
-    sub: "text-indigo-500 dark:text-indigo-200/80",
-    dot: "bg-indigo-500",
-  },
-  {
-    base:
-      "bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-100",
-    sub: "text-emerald-500 dark:text-emerald-200/80",
-    dot: "bg-emerald-500",
-  },
-  {
-    base:
-      "bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-900/40 dark:border-amber-700 dark:text-amber-100",
-    sub: "text-amber-600 dark:text-amber-200/80",
-    dot: "bg-amber-500",
-  },
-  {
-    base:
-      "bg-rose-50 border-rose-100 text-rose-700 dark:bg-rose-900/40 dark:border-rose-700 dark:text-rose-100",
-    sub: "text-rose-500 dark:text-rose-200/80",
-    dot: "bg-rose-500",
-  },
-  {
-    base:
-      "bg-sky-50 border-sky-100 text-sky-700 dark:bg-sky-900/40 dark:border-sky-700 dark:text-sky-100",
-    sub: "text-sky-500 dark:text-sky-200/80",
-    dot: "bg-sky-500",
-  },
-];
-
-function getAccent(calendarId) {
-  const safeId = calendarId || "main";
-  let hash = 0;
-  for (let i = 0; i < safeId.length; i++) hash = (hash + safeId.charCodeAt(i)) % ACCENTS.length;
-  return ACCENTS[hash];
+function ensureDate(value) {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
 }
 
-function toDate(v) {
-  if (!v) return null;
-  if (v instanceof Date) return v;
-  if (typeof v?.toDate === "function") return v.toDate();
-  return new Date(v);
+function formatTime(event) {
+  if (event.allDay) return "All day";
+  const start = ensureDate(event.start);
+  if (!start) return "";
+  if (!event.end) {
+    return start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const end = ensureDate(event.end);
+  return `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
-function startOfMonth(date) {
-  const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-function endOfMonth(date) {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-function startOfWeek(date) {
-  const d = new Date(date);
-  const diff = d.getDay();
-  d.setDate(d.getDate() - diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-function endOfWeek(date) {
-  const d = new Date(date);
-  const diff = 6 - d.getDay();
-  d.setDate(d.getDate() + diff);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-function addMonths(date, amount) {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + amount);
-  return d;
-}
-function addDays(date, amount) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + amount);
-  return d;
-}
-function isSameDay(a, b) {
-  return (
-    (item.title || item.summary || "").toLowerCase().includes(s) ||
-    (item.location || "").toLowerCase().includes(s) ||
-    (item.notes || item.description || "").toLowerCase().includes(s)
+export default function CalendarMonth({
+  calendarFilter = "all",
+  selectedCalendarIds = [],
+  search = "",
+  onCalendarsDiscovered = () => {},
+}) {
+  const { events } = useLifehubData();
+  const [referenceDate, setReferenceDate] = useState(() => new Date());
+
+  const goToMonth = (delta) => {
+    setReferenceDate((current) =>
+      new Date(current.getFullYear(), current.getMonth() + delta, 1)
+    );
+  };
+
+  const monthStart = useMemo(
+    () => startOfMonth(referenceDate),
+    [referenceDate]
   );
-}
+  const monthEnd = useMemo(() => {
+    const next = startOfNextMonth(referenceDate);
+    return new Date(next.getTime() - 1);
+  }, [referenceDate]);
 
-// Very simple month view placeholder that lists items by day.
-// (Your day-grid UI can replace this later; this keeps logic correct.)
-export default function CalendarMonth({ calendarId = "main", searchQuery = "" }) {
-  const [user, setUser] = useState(null);
-  const [items, setItems] = useState([]);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
-  }, []);
-
-  const { visibleEvents, discoveredCalendars } = useMemo(() => {
+  const visibleEvents = useMemo(() => {
+    const query = search.trim().toLowerCase();
     const selected = selectedCalendarIds.length
       ? new Set(selectedCalendarIds)
       : null;
-    const queryText = search.trim().toLowerCase();
 
-    const filtered = events.filter((event) => {
-      const start = toDate(event.start) || new Date();
-      if (start < monthStart || start > monthEnd) return false;
-      const calId = event.calendarId || "main";
-      if (calendarFilter !== "all" && calId !== calendarFilter) return false;
-      if (selected && !selected.has(calId)) return false;
-      if (queryText) {
-        const haystack = `${event.summary || ""} ${event.description || ""} ${
-          event.location || ""
-        }`.toLowerCase();
-        if (!haystack.includes(queryText)) return false;
-      }
-      return true;
-    });
+    return events
+      .map((event) => ({
+        ...event,
+        start: ensureDate(event.start),
+        end: ensureDate(event.end),
+      }))
+      .filter((event) => {
+        if (!event.start) return false;
+        if (event.start < monthStart || event.start > monthEnd) return false;
 
-    const discovered = Array.from(
-      new Set(filtered.map((event) => event.calendarId || "main"))
-    )
-      .filter((id) => id && id !== "main")
-      .map((id) => ({ id, name: id }));
+        const calendarId = event.calendarId || "main";
+        if (calendarFilter !== "all" && calendarId !== calendarFilter) return false;
+        if (selected && selected.size > 0 && !selected.has(calendarId)) return false;
 
-    return { visibleEvents: filtered, discoveredCalendars: discovered };
+        if (query) {
+          const haystack = `${event.summary || ""} ${event.description || ""} ${
+            event.location || ""
+          }`.toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.start - b.start);
   }, [
     events,
     monthStart,
@@ -154,47 +94,137 @@ export default function CalendarMonth({ calendarId = "main", searchQuery = "" })
     search,
   ]);
 
-  // Live month query
   useEffect(() => {
-    if (!user) return;
+    const discovered = Array.from(
+      new Set(visibleEvents.map((event) => event.calendarId || "main"))
+    )
+      .filter((id) => id && id !== "main")
+      .map((id) => ({ id, name: id }));
+    onCalendarsDiscovered(discovered);
+  }, [visibleEvents, onCalendarsDiscovered]);
 
-    (async () => {
-      const col = collection(db, "users", user.uid, "events");
-      // Simple order; filter client-side to avoid composite index errors.
-      const snap = await getDocs(query(col, orderBy("start")));
-      setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    })();
-  }, [user]);
+  const monthCells = useMemo(
+    () => getMonthMatrix(referenceDate),
+    [referenceDate]
+  );
 
-  const visible = useMemo(() => {
-    return items.filter((it) => {
-      const cal = it.calendarId ?? "main";
-      const calOk = calendarId === "all" ? true : cal === calendarId;
-      return calOk && matchesSearch(it, searchQuery);
+  const today = useMemo(() => new Date(), []);
+
+  const monthLabel = useMemo(
+    () =>
+      referenceDate.toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      }),
+    [referenceDate]
+  );
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map();
+    monthCells.forEach((date) => {
+      map.set(date.toDateString(), []);
     });
-  }, [items, calendarId, searchQuery]);
-
-  if (!user) return <p className="text-gray-600">Sign in to see your calendar.</p>;
-  if (visible.length === 0) return <p className="text-gray-600">No events in this range.</p>;
+    visibleEvents.forEach((event) => {
+      const key = event.start?.toDateString?.();
+      if (key && map.has(key)) {
+        map.get(key).push(event);
+      }
+    });
+    return map;
+  }, [monthCells, visibleEvents]);
 
   return (
-    <div className="space-y-2">
-      {visible.map((e) => {
-        const start = e.start?.toDate ? e.start.toDate() : new Date(e.start);
-        const end = e.end?.toDate ? e.end.toDate() : new Date(e.end);
-        return (
-          <div key={e.id} className="rounded-lg border border-gray-200 p-3 bg-white">
-            <div className="text-sm font-semibold text-gray-900">
-              {e.title || e.summary || "Untitled"}
-            </div>
-            <div className="text-xs text-gray-600">
-              {start.toLocaleString()} → {end.toLocaleString()}
-              {e.location ? ` • ${e.location}` : ""}
-              {e.calendarId ? ` • ${e.calendarId}` : ""}
-            </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => goToMonth(-1)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+        >
+          Previous
+        </button>
+        <div className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+          {monthLabel}
+        </div>
+        <button
+          type="button"
+          onClick={() => goToMonth(1)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+        >
+          Next
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {WEEKDAYS.map((weekday) => (
+          <div key={weekday} className="text-center">
+            {weekday}
           </div>
-        );
-      })}
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-2">
+        {monthCells.map((date) => {
+          const isCurrentMonth = date.getMonth() === referenceDate.getMonth();
+          const isToday = sameDay(date, today);
+          const key = date.toDateString();
+          const eventsForDay = eventsByDay.get(key) || [];
+
+          return (
+            <div
+              key={key}
+              className={`min-h-[120px] rounded-xl border p-2 text-xs ${
+                isCurrentMonth
+                  ? "border-gray-200 bg-white text-gray-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-gray-100"
+                  : "border-dashed border-gray-200 bg-gray-50 text-gray-400 dark:border-neutral-800 dark:bg-neutral-950"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className={`h-6 w-6 rounded-full text-center text-sm font-semibold ${
+                    isToday
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-600 dark:text-gray-300"
+                  }`}
+                >
+                  {date.getDate()}
+                </div>
+                <span className="text-[10px] uppercase text-gray-400">
+                  {eventsForDay.length}
+                </span>
+              </div>
+
+              <ul className="mt-2 space-y-1">
+                {eventsForDay.slice(0, 3).map((event) => (
+                  <li
+                    key={event.id}
+                    className="truncate rounded-md bg-indigo-50 px-2 py-1 text-[11px] text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-100"
+                    title={event.summary || "(no title)"}
+                  >
+                    <div className="font-medium">
+                      {event.summary || "(no title)"}
+                    </div>
+                    <div className="text-[10px] text-indigo-500">
+                      {formatTime(event)}
+                    </div>
+                  </li>
+                ))}
+                {eventsForDay.length > 3 && (
+                  <li className="text-[10px] text-gray-500 dark:text-gray-400">
+                    +{eventsForDay.length - 3} more
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      {visibleEvents.length === 0 && (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          No events match the current filters for this month.
+        </p>
+      )}
     </div>
   );
 }
