@@ -34,6 +34,8 @@ export default function TodoList({
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+
     if (!user) {
       setTasks([]);
       setLoading(false);
@@ -46,7 +48,16 @@ export default function TodoList({
       q,
       (snap) => {
         const rows = [];
-        snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          const title = data.title || data.text || "Untitled task";
+          rows.push({
+            id: d.id,
+            ...data,
+            title,
+            text: data.text || title,
+          });
+        });
         setTasks(rows);
         setLoading(false);
       },
@@ -102,6 +113,7 @@ export default function TodoList({
 
     const payload = {
       title,
+      text: title,
       notes: "",
       completed: false,
       calendarId: resolveCalendarForNewTask(),
