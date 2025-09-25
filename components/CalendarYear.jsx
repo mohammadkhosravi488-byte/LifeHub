@@ -47,6 +47,13 @@ export default function CalendarYear({
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setEvents([]);
+      setTodos([]);
+    }
+  }, [user]);
+
   const yStart = startOfYear(currentDate);
   const yEnd = endOfYear(currentDate);
 

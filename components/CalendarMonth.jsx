@@ -69,6 +69,13 @@ export default function CalendarMonth({
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setEvents([]);
+      setTodos([]);
+    }
+  }, [user]);
+
   // Read month range
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);

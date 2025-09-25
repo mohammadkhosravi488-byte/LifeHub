@@ -65,7 +65,9 @@ export default function TodoList({
 
     const effectiveSelection = selectedCalendarIds?.length
       ? selectedCalendarIds
-      : ["main"];
+      : calendarFilter === "all"
+      ? []
+      : [calendarFilter || "main"];
 
     if (calendarFilter && calendarFilter !== "all") {
       list = list.filter((t) => (t.calendarId || "main") === calendarFilter);

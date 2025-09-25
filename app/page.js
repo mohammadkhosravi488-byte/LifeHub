@@ -37,7 +37,7 @@ export default function Home() {
     setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"));
 
   // Filters / search
-  const [calendarFilter, setCalendarFilter] = useState("main"); // "main" default
+  const [calendarFilter, setCalendarFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableCalendars, setAvailableCalendars] = useState([]);
@@ -86,7 +86,11 @@ export default function Home() {
 
   // Build board items
   const items = useMemo(() => {
-    const chosen = selectedCalendarIds.length ? selectedCalendarIds : ["main"];
+    const chosen = selectedCalendarIds.length
+      ? selectedCalendarIds
+      : calendarFilter === "all"
+      ? []
+      : [calendarFilter || "main"];
     const cards = {
       calendar: {
         id: "calendar",
