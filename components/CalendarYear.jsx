@@ -1,38 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  Timestamp,
-} from "firebase/firestore";
 
-function toDate(val) {
-  if (!val) return null;
-  if (val instanceof Date) return val;
-  if (val.toDate) return val.toDate();
-  return new Date(val);
-}
+import { useLifehubData } from "@/lib/data-context";
 
-function startOfYear(date) {
-  const d = new Date(date.getFullYear(), 0, 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function ensureDate(value) {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
 }
-function endOfYear(d) {
-  const x = new Date(d.getFullYear(), 11, 31);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-function monthLabel(i) {
-  return new Date(2000, i, 1).toLocaleString(undefined, { month: "long" });
-}
-/* ------------------------------------------------------- */
 
 export default function CalendarYear({
   calendarFilter = "all",
@@ -40,136 +30,184 @@ export default function CalendarYear({
   search = "",
   onCalendarsDiscovered = () => {},
 }) {
-  const [user, setUser] = useState(null);
-  const [events, setEvents] = useState([]);
-  const [todos, setTodos] = useState([]);
+  const { events, todos } = useLifehubData();
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+
+  const year = currentDate.getFullYear();
+  const searchQuery = search.trim().toLowerCase();
+  const selected = useMemo(
+    () => (selectedCalendarIds.length ? new Set(selectedCalendarIds) : null),
+    [selectedCalendarIds]
+  );
+
+  const filteredEvents = useMemo(() => {
+    return events
+      .map((event) => ({
+        ...event,
+        start: ensureDate(event.start),
+        end: ensureDate(event.end),
+      }))
+      .filter((event) => {
+        if (!event.start || event.start.getFullYear() !== year) return false;
+        const calendarId = event.calendarId || "main";
+        if (calendarFilter !== "all" && calendarId !== calendarFilter) return false;
+        if (selected && selected.size > 0 && !selected.has(calendarId)) return false;
+        if (searchQuery) {
+          const haystack = `${event.summary || ""} ${event.description || ""} ${
+            event.location || ""
+          }`.toLowerCase();
+          if (!haystack.includes(searchQuery)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => a.start - b.start);
+  }, [events, calendarFilter, selected, searchQuery, year]);
+
+  const filteredTodos = useMemo(() => {
+    return todos
+      .map((todo) => ({
+        ...todo,
+        due: ensureDate(todo.due),
+      }))
+      .filter((todo) => {
+        if (!todo.due || todo.due.getFullYear() !== year) return false;
+        const calendarId = todo.calendarId || "main";
+        if (calendarFilter !== "all" && calendarId !== calendarFilter) return false;
+        if (selected && selected.size > 0 && !selected.has(calendarId)) return false;
+        if (searchQuery && !todo.text?.toLowerCase().includes(searchQuery)) return false;
+        return true;
+      })
+      .sort((a, b) => a.due - b.due);
+  }, [todos, calendarFilter, selected, searchQuery, year]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
-  }, []);
-
-  const yStart = startOfYear(currentDate);
-  const yEnd = endOfYear(currentDate);
-
-  // events in year
-  useEffect(() => {
-    if (!user) return;
-    const qEv = query(
-      collection(db, "users", user.uid, "events"),
-      where("start", ">=", Timestamp.fromDate(yStart)),
-      where("start", "<=", Timestamp.fromDate(yEnd)),
-      orderBy("start", "asc")
-    );
-    const unsub = onSnapshot(qEv, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        list.push({
-          id: d.id,
-          title: data.summary || data.title || "(no title)",
-          start: toDate(data.start),
-          calendarId: data.calendarId || "main",
-        });
-      });
-      setEvents(list);
-    });
-    return () => unsub();
-  }, [user, yStart.getTime(), yEnd.getTime()]);
-
-  // todos (we’ll just count/peek by month if due is set)
-  useEffect(() => {
-    if (!user) return;
-    const qTd = query(
-      collection(db, "users", user.uid, "todos"),
-      orderBy("createdAt", "desc")
-    );
-    const unsub = onSnapshot(qTd, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        list.push({
-          id: d.id,
-          title: data.text || data.title || "(untitled task)",
-          due: toDate(data.due),
-          calendarId: data.calendarId || "main",
-          completed: !!data.completed,
-        });
-      });
-      setTodos(list);
-    });
-    return () => unsub();
-  }, [user]);
-
-  const activeCalendars = useMemo(() => {
-    if (calendarFilter === "all") return null;
-    if (calendarFilter !== "main" && selectedCalendarIds?.length) {
-      return new Set(selectedCalendarIds);
-    }
-    return new Set([calendarFilter]);
-  }, [calendarFilter, selectedCalendarIds]);
+    const calendars = new Set();
+    filteredEvents.forEach((event) => calendars.add(event.calendarId || "main"));
+    filteredTodos.forEach((todo) => calendars.add(todo.calendarId || "main"));
+    const discovered = Array.from(calendars)
+      .filter((id) => id && id !== "main")
+      .map((id) => ({ id, name: id }));
+    onCalendarsDiscovered(discovered);
+  }, [filteredEvents, filteredTodos, onCalendarsDiscovered]);
 
   const grouped = useMemo(() => {
-    const g = Array.from({ length: 12 }, () => ({ events: [], todos: [] }));
-
-    const inCal = (cid) => !activeCalendars || activeCalendars.has(cid || "main");
-
-    events.forEach((ev) => {
-      if (!ev.start) return;
-      if (!inCal(ev.calendarId)) return;
-      const m = ev.start.getMonth();
-      g[m].events.push(ev);
+    const buckets = Array.from({ length: 12 }, () => ({ events: [], todos: [] }));
+    filteredEvents.forEach((event) => {
+      if (!event.start) return;
+      buckets[event.start.getMonth()].events.push(event);
     });
-
-    todos.forEach((td) => {
-      if (!td.due) return;
-      if (!inCal(td.calendarId)) return;
-      const m = td.due.getMonth();
-      g[m].todos.push(td);
+    filteredTodos.forEach((todo) => {
+      if (!todo.due) return;
+      buckets[todo.due.getMonth()].todos.push(todo);
     });
+    return buckets;
+  }, [filteredEvents, filteredTodos]);
 
-    return g;
-  }, [events, todos, activeCalendars]);
+  const goYear = (delta) => {
+    setCurrentDate((current) => new Date(current.getFullYear() + delta, 0, 1));
+  };
+
+  const summaryCount = grouped.reduce(
+    (acc, bucket) => acc + bucket.events.length + bucket.todos.length,
+    0
+  );
+
+  if (summaryCount === 0) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => goYear(-1)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+          >
+            Previous year
+          </button>
+          <div className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+            {year}
+          </div>
+          <button
+            type="button"
+            onClick={() => goYear(1)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+          >
+            Next year
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          No events or tasks match the selected filters for this year.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
-      <div className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
-        {currentDate.getFullYear()}
+    <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => goYear(-1)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+        >
+          Previous year
+        </button>
+        <div className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+          {year}
+        </div>
+        <button
+          type="button"
+          onClick={() => goYear(1)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-600 transition hover:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200"
+        >
+          Next year
+        </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        {grouped.map((bucket, i) => (
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {grouped.map((bucket, index) => (
           <div
-            key={i}
-            className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800"
+            key={MONTH_NAMES[index]}
+            className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-neutral-800 dark:bg-neutral-950"
           >
-            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-              {monthLabel(i)}
+            <div className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {MONTH_NAMES[index]}
             </div>
-
-            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">
+            <div className="mb-2 text-xs text-gray-600 dark:text-gray-300">
               {bucket.events.length} events • {bucket.todos.length} tasks
             </div>
-
-            {/* Peek list (up to 5 items) */}
-            <ul className="space-y-1">
-              {[...bucket.events.slice(0, 3), ...bucket.todos.slice(0, 2)].map((it) => (
+            <ul className="space-y-1 text-xs">
+              {bucket.events.slice(0, 2).map((event) => (
                 <li
-                  key={`${"completed" in it ? "td" : "ev"}-${it.id}`}
-                  className="truncate text-xs px-2 py-1 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100"
-                  title={it.title}
+                  key={`event-${event.id}`}
+                  className="truncate rounded-md bg-indigo-50 px-2 py-1 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-100"
+                  title={event.summary || "(no title)"}
                 >
-                  {"completed" in it ? "✓ " : ""}
-                  {it.title}
+                  <div className="font-medium">
+                    {event.summary || "(no title)"}
+                  </div>
+                  <div className="text-[10px] text-indigo-500">
+                    {event.start?.toLocaleDateString?.()}
+                  </div>
                 </li>
               ))}
+              {bucket.todos.slice(0, 2).map((todo) => (
+                <li
+                  key={`todo-${todo.id}`}
+                  className="truncate rounded-md bg-emerald-50 px-2 py-1 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100"
+                  title={todo.text}
+                >
+                  <div className="font-medium">✓ {todo.text}</div>
+                  <div className="text-[10px] text-emerald-500">
+                    Due {todo.due?.toLocaleDateString?.()}
+                  </div>
+                </li>
+              ))}
+              {bucket.events.length + bucket.todos.length > 4 && (
+                <li className="text-[10px] text-gray-500 dark:text-gray-400">
+                  +{bucket.events.length + bucket.todos.length - 4} more
+                </li>
+              )}
             </ul>
-
-            {bucket.events.length + bucket.todos.length > 5 && (
-              <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
-                +{bucket.events.length + bucket.todos.length - 5} more
-              </div>
-            )}
           </div>
         ))}
       </div>
