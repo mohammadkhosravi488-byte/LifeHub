@@ -11,7 +11,8 @@
   --outline-neutral: #e5e7eb;/* gray-200 */
 }
 
-:root.dark {
+:root.dark,
+.dark {
   --ink: #e5e7eb;            /* gray-200 */
   --ink-muted: #94a3b8;      /* slate-400 */
   --bg: #0b1220;             /* deep navy */
@@ -22,8 +23,9 @@
 /* Base scaffolding */
 html, body {
   height: 100%;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--ink);
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 /* Optional helpers */
