@@ -84,80 +84,92 @@ export default function CalendarDay({
   onCalendarsDiscovered = () => {},
 }) {
   const [user, setUser] = useState(null);
-  const [date, setDate] = useState(() => new Date());
+  const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [events, setEvents] = useState([]);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  // Query events for the chosen day (range on 'start' only => no composite index)
+  // Live query for the chosen day
   useEffect(() => {
-    if (!user) return setEvents([]);
-    const from = startOfDay(date);
-    const to = endOfDay(date);
+    if (!user) return;
+    const { start, end } = dayStartEnd(referenceDate);
 
-    const ref = collection(db, "users", user.uid, "events");
-    const qref = query(
-      ref,
-      where("start", ">=", Timestamp.fromDate(from)),
-      where("start", "<=", Timestamp.fromDate(to)),
+    const q = query(
+      collection(db, "users", user.uid, "events"),
+      where("start", ">=", Timestamp.fromDate(start)),
+      where("start", "<=", Timestamp.fromDate(end)),
       orderBy("start", "asc")
     );
 
-    const unsub = onSnapshot(
-      qref,
-      (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEvents(rows);
-        // surface any new calendar ids up to the page so filters show real chips
-        const found = Array.from(
-          new Set(rows.map((r) => r.calendarId || "main"))
-        )
-          .filter((id) => id !== "main")
-          .map((id) => ({ id, name: id }));
-        onCalendarsDiscovered(found);
-      },
-      (err) => {
-        console.error("Day query failed", err);
-      }
-    );
-    return () => unsub();
-  }, [user, date, onCalendarsDiscovered]);
+    const unsub = onSnapshot(q, (snap) => {
+      const list = [];
+      snap.forEach((d) => {
+        const data = d.data() || {};
+        list.push({
+          id: d.id,
+          ...data,
+          start: toDate(data.start),
+          end: toDate(data.end),
+        });
+      });
+      setEvents(list);
+    });
 
-  const visible = useMemo(() => {
-    const selected = new Set(selectedCalendarIds || []);
-    return events.filter((ev) => {
+    return () => unsub();
+  }, [user, referenceDate]);
+
+  // Filter + discover
+  const { visibleEvents, discoveredCalendars } = useMemo(() => {
+    const selected = selectedCalendarIds.length ? new Set(selectedCalendarIds) : null;
+    const text = search.trim().toLowerCase();
+
+    const filtered = events.filter((ev) => {
       const calId = ev.calendarId || "main";
       if (calendarFilter !== "all" && calId !== calendarFilter) return false;
-      if (selected.size > 0 && !selected.has(calId)) return false;
+      if (selected && !selected.has(calId)) return false;
+      if (text) {
+        const hay = `${ev.summary || ""} ${ev.description || ""} ${ev.location || ""}`.toLowerCase();
+        if (!hay.includes(text)) return false;
+      }
       return true;
     });
-  }, [events, calendarFilter, selectedCalendarIds]);
 
-  // positioning helpers
-  const pos = useCallback((ev) => {
-    const s = ev.start?.toDate?.() || new Date(ev.start);
-    const e = ev.end?.toDate?.() || (ev.end ? new Date(ev.end) : null);
-    const minutesFromMidnight = s.getHours() * 60 + s.getMinutes();
-    const top = (minutesFromMidnight / 60) * PX_PER_HOUR;
-    const endMinutes = e
-      ? e.getHours() * 60 + e.getMinutes()
-      : minutesFromMidnight + 30;
-    const height = Math.max(30, ((endMinutes - minutesFromMidnight) / 60) * PX_PER_HOUR);
-    return { top, height };
-  }, []);
+    const discovered = Array.from(new Set(filtered.map((e) => e.calendarId || "main")))
+      .filter((id) => id && id !== "main")
+      .map((id) => ({ id, name: id }));
 
-  const prettyDate = useMemo(() => {
-    return date.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
+    return { visibleEvents: filtered, discoveredCalendars: discovered };
+  }, [events, calendarFilter, selectedCalendarIds, search]);
+
+  useEffect(() => {
+    onCalendarsDiscovered(discoveredCalendars);
+  }, [discoveredCalendars, onCalendarsDiscovered]);
+
+  const addEvent = async () => {
+    if (!user) return;
+    const start = new Date(referenceDate);
+    start.setHours(10, 0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+    await addDoc(collection(db, "users", user.uid, "events"), {
+      summary: "New event",
+      start: Timestamp.fromDate(start),
+      end: Timestamp.fromDate(end),
+      calendarId: "main",
+      allDay: false,
+      createdAt: serverTimestamp(),
     });
-  }, [date]);
+  };
+
+  const dateLabel = referenceDate.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div className="bg-white dark:bg-neutral-950/60 border border-gray-200 dark:border-neutral-800 rounded-3xl p-5 shadow-sm">
@@ -204,89 +216,38 @@ export default function CalendarDay({
         </div>
       </div>
 
-      {/* Add event inline */}
-      {adding && (
-        <div className="mb-4">
-          <AddEvent
-            defaultCalendarId={calendarFilter === "all" ? "main" : calendarFilter}
-            defaultDate={date}
-            onClose={() => setAdding(false)}
-            onCreated={() => setAdding(false)}
-          />
-        </div>
-      )}
+      {/* List */}
+      <ul className="mt-4 space-y-2">
+        {visibleEvents.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No events for this day.</p>
+        ) : (
+          visibleEvents.map((ev) => {
+            const accent = getAccent(ev.calendarId);
+            const start = ev.start || new Date();
+            const end = ev.end;
+            const timeLabel = ev.allDay
+              ? "All day"
+              : `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${
+                  end ? ` – ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""
+                }`;
 
-      {/* Timeline */}
-      <div className="relative border-t border-gray-200">
-        <div className="grid grid-cols-[80px_1fr]">
-          {/* Time ruler */}
-          <div className="pr-2">
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="h-[60px] text-right pr-1 text-xs text-gray-500 border-b border-gray-100"
-              >
-                {new Date(0, 0, 0, h).toLocaleTimeString([], {
-                  hour: "numeric",
-                })}
-              </div>
-            ))}
-          </div>
-
-          {/* Event canvas */}
-          <div className="relative">
-            {/* hour lines */}
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="absolute left-0 right-0 border-b border-gray-100"
-                style={{ top: h * PX_PER_HOUR, height: 0 }}
-              />
-            ))}
-
-            {/* events */}
-            <div className="relative" style={{ height: 24 * PX_PER_HOUR }}>
-              {visible.map((ev) => {
-                const { top, height } = pos(ev);
-                const title = ev.summary || "(no title)";
-                const cal = ev.calendarId || "main";
-                return (
-                  <div
-                    key={ev.id}
-                    className="absolute left-2 right-3 rounded-2xl"
-                    style={{
-                      top,
-                      height,
-                      background: "var(--card-bg, #eef2ff)",
-                      border: "4px solid var(--outline, #c7d2fe)",
-                      padding: "8px 10px",
-                      overflow: "hidden",
-                    }}
-                    title={title}
-                    aria-label={`${title}`}
-                  >
-                    <div className="text-xs text-gray-500 mb-1">{cal}</div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {title}
+            return (
+              <li key={ev.id} className={`rounded-xl border px-3 py-2 ${accent.base}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-1.5 w-1.5 rounded-full ${accent.dot}`} />
+                      <span className="truncate font-medium">{ev.summary || "(no title)"}</span>
                     </div>
                     <div className={`mt-1 text-xs ${accent.sub}`}>{timeLabel}</div>
                   </div>
-                );
-              })}
-              {user && visible.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  No events today.
+                  <span className="text-[11px] text-gray-500">{ev.calendarId || "main"}</span>
                 </div>
-              )}
-              {!user && (
-                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                  Sign in to view your day.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+              </li>
+            );
+          })
+        )}
+      </ul>
     </div>
   );
 }

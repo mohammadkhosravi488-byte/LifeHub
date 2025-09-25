@@ -1,29 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
-import { useLifehubData } from "@/lib/data-context";
+import { useState } from "react";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, doc, updateDoc, arrayUnion } from "firebase/firestore";
 
 export default function ShareCalendar({ calendarId }) {
-  const { calendars } = useLifehubData();
-  const calendar = useMemo(
-    () => calendars.find((cal) => cal.id === calendarId) || calendars[0],
-    [calendars, calendarId]
-  );
+  const [email, setEmail] = useState("");
+  const [info, setInfo] = useState("");
 
-  if (!calendar) return null;
+  const addMember = async () => {
+    setInfo("");
+    const q = query(collection(db, "profiles"), where("email", "==", email));
+    const snap = await getDocs(q);
+    if (snap.empty) { setInfo("No user with that email has signed in yet."); return; }
+    const uid = snap.docs[0].data().uid;
+    await updateDoc(doc(db, "calendars", calendarId), { memberUids: arrayUnion(uid) });
+    setInfo("Added ✔");
+    setEmail("");
+  };
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 p-4">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Share {calendar.name}</h3>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-        This demo keeps sharing local to your browser. Invite family or classmates by telling them about LifeHub and syncing
-        the same calendars in their account.
-      </p>
-      <ol className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-200 list-decimal list-inside">
-        <li>Open LifeHub on their device.</li>
-        <li>Select the “{calendar.name}” calendar from the tabs.</li>
-        <li>Import this calendar’s ICS feed or manually recreate key events.</li>
-      </ol>
+    <div className="flex gap-2 items-center">
+      <input
+        value={email}
+        onChange={(e)=>setEmail(e.target.value)}
+        placeholder="Add member by email"
+        className="rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <button onClick={addMember} className="px-3 py-2 bg-blue-600 text-white rounded-md">Share</button>
+      {info && <span className="text-sm text-gray-700">{info}</span>}
     </div>
   );
 }

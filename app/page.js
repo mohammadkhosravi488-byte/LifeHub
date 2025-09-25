@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 import AuthButtons from "@/components/AuthButtons";
 import CalendarTabs from "@/components/CalendarTabs";
@@ -15,7 +17,6 @@ import ViewToggle from "@/components/ViewToggle";
 import ConsoleBoard from "@/components/ConsoleBoard";
 import ConsoleCard from "@/components/ConsoleCard";
 import CreateCalendarModal from "@/components/CreateCalendarModal";
-import { useLifehubData } from "@/lib/data-context";
 
 const DEFAULT_ORDER = ["calendar", "upcoming", "ai", "todos"];
 
@@ -24,7 +25,11 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const { user, hydrated } = useLifehubData();
+  const [user, setUser] = useState(null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
 
   // View mode
   const [viewMode, setViewMode] = useState("day"); // "day" | "month" | "year"
@@ -32,7 +37,7 @@ export default function Home() {
     setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"));
 
   // Filters / search
-  const [calendarFilter, setCalendarFilter] = useState("all");
+  const [calendarFilter, setCalendarFilter] = useState("main"); // "main" default
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableCalendars, setAvailableCalendars] = useState([]);
@@ -81,7 +86,7 @@ export default function Home() {
 
   // Build board items
   const items = useMemo(() => {
-    const chosen = selectedCalendarIds;
+    const chosen = selectedCalendarIds.length ? selectedCalendarIds : ["main"];
     const cards = {
       calendar: {
         id: "calendar",
@@ -117,7 +122,6 @@ export default function Home() {
                 <CalendarMonth
                   calendarFilter={calendarFilter}
                   selectedCalendarIds={chosen}
-                  search={search}
                   onCalendarsDiscovered={setAvailableCalendars}
                 />
               </div>
@@ -127,7 +131,6 @@ export default function Home() {
                 <CalendarYear
                   calendarFilter={calendarFilter}
                   selectedCalendarIds={chosen}
-                  search={search}
                   onCalendarsDiscovered={setAvailableCalendars}
                 />
               </div>
@@ -179,7 +182,7 @@ export default function Home() {
     return (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]);
   }, [order, viewMode, calendarFilter, selectedCalendarIds, search]);
 
-  if (!mounted || !hydrated) return null;
+  if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-neutral-900 dark:to-neutral-950">
@@ -300,6 +303,7 @@ export default function Home() {
               setAvailableCalendars((prev) => [...prev, result.calendar]);
             }
           }}
+          user={user}
         />
 
         <div className="h-10" />

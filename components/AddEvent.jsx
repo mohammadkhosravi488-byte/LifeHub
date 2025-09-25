@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useLifehubData } from "@/lib/data-context";
+import { useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { addDoc, collection, serverTimestamp, Timestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 export default function AddEvent({
   defaultCalendarId = "main",
@@ -9,7 +11,12 @@ export default function AddEvent({
   onClose = () => {},
   onCreated = () => {},
 }) {
-  const { calendars, addEvent } = useLifehubData();
+  const [user, setUser] = useState(null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
+
   const [title, setTitle] = useState("");
   const [calendarId, setCalendarId] = useState(defaultCalendarId);
   const [allDay, setAllDay] = useState(false);
@@ -20,47 +27,45 @@ export default function AddEvent({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const options = useMemo(() => {
-    if (!calendars.some((cal) => cal.id === "main")) {
-      return [{ id: "main", name: "Personal" }, ...calendars];
-    }
-    return calendars;
-  }, [calendars]);
-
   async function save() {
+    if (!user) return;
     if (!title.trim()) return;
 
-    const base = new Date(`${date}T00:00:00`);
-    const [startHour, startMinute] = start.split(":").map(Number);
-    const [endHour, endMinute] = end.split(":").map(Number);
+    const d = new Date(date + "T00:00:00");
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
 
-    const startDate = new Date(base);
-    startDate.setHours(allDay ? 0 : startHour, allDay ? 0 : startMinute, 0, 0);
+    const startDate = new Date(d);
+    startDate.setHours(allDay ? 0 : sh, allDay ? 0 : sm, 0, 0);
 
-    const endDate = new Date(base);
-    if (allDay) {
-      endDate.setHours(23, 59, 59, 999);
-    } else {
-      endDate.setHours(endHour, endMinute, 0, 0);
-    }
+    const endDate = new Date(d);
+    endDate.setHours(allDay ? 23 : eh, allDay ? 59 : em, allDay ? 59 : 0, allDay ? 999 : 0);
 
+    setSaving(true);
     try {
-      setSaving(true);
-      addEvent({
+      await addDoc(collection(db, "users", user.uid, "events"), {
         summary: title.trim(),
         calendarId: calendarId || "main",
-        allDay,
-        location,
-        description: notes,
-        start: startDate,
-        end: endDate,
+        allDay: !!allDay,
+        location: location || "",
+        description: notes || "",
+        start: Timestamp.fromDate(startDate),
+        end: Timestamp.fromDate(endDate),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        source: "manual",
       });
+      setSaving(false);
       setTitle("");
       onCreated();
-    } finally {
+    } catch (e) {
+      console.error(e);
       setSaving(false);
+      alert("Failed to save event.");
     }
   }
+
+  if (!user) return null;
 
   return (
     <div className="rounded-xl border border-gray-200 p-3 bg-white">
@@ -86,11 +91,7 @@ export default function AddEvent({
               value={calendarId}
               onChange={(e) => setCalendarId(e.target.value)}
             >
-              {options.map((cal) => (
-                <option key={cal.id} value={cal.id}>
-                  {cal.name}
-                </option>
-              ))}
+              <option value="main">Main</option>
             </select>
           </div>
           <input

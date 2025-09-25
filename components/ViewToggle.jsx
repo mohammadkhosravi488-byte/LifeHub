@@ -1,8 +1,6 @@
 "use client";
 
-export default function ViewToggle({ value, mode, onChange, onCycle }) {
-  const current = value ?? mode ?? "day";
-
+export default function ViewToggle({ value, onChange, onCycle }) {
   return (
     <div className="flex items-center gap-2">
       <button
@@ -10,11 +8,9 @@ export default function ViewToggle({ value, mode, onChange, onCycle }) {
         onClick={() => onChange?.("day")}
         className={[
           "h-8 px-3 rounded-full border text-sm",
-          current === "day"
-            ? "border-indigo-400 bg-indigo-50"
-            : "border-gray-300 bg-white",
+          value === "day" ? "border-indigo-400 bg-indigo-50" : "border-gray-300 bg-white",
         ].join(" ")}
-        aria-pressed={current === "day"}
+        aria-pressed={value === "day"}
       >
         Day
       </button>
@@ -23,11 +19,9 @@ export default function ViewToggle({ value, mode, onChange, onCycle }) {
         onClick={() => onChange?.("month")}
         className={[
           "h-8 px-3 rounded-full border text-sm",
-          current === "month"
-            ? "border-indigo-400 bg-indigo-50"
-            : "border-gray-300 bg-white",
+          value === "month" ? "border-indigo-400 bg-indigo-50" : "border-gray-300 bg-white",
         ].join(" ")}
-        aria-pressed={current === "month"}
+        aria-pressed={value === "month"}
       >
         Month
       </button>
@@ -36,11 +30,9 @@ export default function ViewToggle({ value, mode, onChange, onCycle }) {
         onClick={() => onChange?.("year")}
         className={[
           "h-8 px-3 rounded-full border text-sm",
-          current === "year"
-            ? "border-indigo-400 bg-indigo-50"
-            : "border-gray-300 bg-white",
+          value === "year" ? "border-indigo-400 bg-indigo-50" : "border-gray-300 bg-white",
         ].join(" ")}
-        aria-pressed={current === "year"}
+        aria-pressed={value === "year"}
       >
         Year
       </button>

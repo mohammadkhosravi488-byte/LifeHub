@@ -1,29 +1,42 @@
 "use client";
 
-import DarkModeToggle from "@/components/DarkModeToggle";
-import { useLifehubData } from "@/lib/data-context";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { auth } from "@/lib/firebase";
+import { signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+import DarkModeToggle from "@/components/DarkModeToggle"; // ✅ ADD THIS IMPORT
 
 export default function AuthButtons() {
-  const { user, resetData } = useLifehubData();
+  const [user] = useAuthState(auth);
+
+  const login = async () => {
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+  };
 
   return (
     <div className="flex items-center gap-3">
+      {/* ✅ Dark mode button goes here */}
       <DarkModeToggle />
-      <div className="hidden text-right text-sm text-gray-600 dark:text-gray-300 sm:block">
-        <div className="font-medium text-gray-800 dark:text-gray-100">
-          {user?.name || "Guest"}
-        </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          {user?.email || "Demo mode"}
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={resetData}
-        className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-      >
-        Reset demo
-      </button>
+
+      {!user ? (
+        <button
+          onClick={login}
+          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+        >
+          Sign in
+        </button>
+      ) : (
+        <button
+          onClick={logout}
+          className="px-4 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
+        >
+          Sign out
+        </button>
+      )}
     </div>
   );
 }

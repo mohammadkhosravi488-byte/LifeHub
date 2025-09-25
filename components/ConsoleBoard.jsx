@@ -1,4 +1,5 @@
 "use client";
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 import {
   DndContext,
@@ -13,18 +14,16 @@ import {
   arrayMove,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import {CSS} from "@dnd-kit/utilities";
 
 /**
  * items: [{ id, spanLg?:1|2|3, height?:number, render: ({dragHandleProps}) => JSX }]
  * onReorder: (ids[]) => void
  */
 export default function ConsoleBoard({ items, onReorder }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 }}));
 
-  const ids = items.map((i) => i.id);
+  const ids = items.map(i => i.id);
 
   const handleDragEnd = (e) => {
     const { active, over } = e;
@@ -36,11 +35,7 @@ export default function ConsoleBoard({ items, onReorder }) {
   };
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {items.map((it) => (

@@ -1,116 +1,102 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useLifehubData } from "@/lib/data-context";
+import { useEffect, useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { googleProvider } from "@/lib/firebase";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 
 export default function DebugPage() {
-  const { user, calendars, events, todos, resetData } = useLifehubData();
-  const [exported, setExported] = useState(null);
+  const [user, setUser] = useState(null);
+  const [status, setStatus] = useState("idle");
+  const [lastRead, setLastRead] = useState(null);
+  const [error, setError] = useState("");
 
-  const summary = useMemo(() => {
-    const totalDuration = events.reduce((acc, event) => {
-      const start = event.start?.getTime?.() || new Date(event.start).getTime();
-      const end = event.end?.getTime?.() || start;
-      return acc + Math.max(0, end - start);
-    }, 0);
-    return {
-      calendars: calendars.length,
-      events: events.length,
-      todos: todos.length,
-      focusedHours: Math.round(totalDuration / (1000 * 60 * 60)),
-    };
-  }, [calendars, events, todos]);
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => setUser(u));
+  }, []);
 
-  const exportData = () => {
-    const payload = {
-      user,
-      calendars,
-      events: events.map((event) => ({
-        ...event,
-        start: event.start?.toISOString?.() || event.start,
-        end: event.end?.toISOString?.() || null,
-      })),
-      todos: todos.map((todo) => ({
-        ...todo,
-        due: todo.due?.toISOString?.() || null,
-      })),
-      exportedAt: new Date().toISOString(),
-    };
-    setExported(JSON.stringify(payload, null, 2));
+  const doSignIn = async () => {
+    setError("");
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      setError(String(e?.message || e));
+    }
+  };
+
+  const doSignOut = async () => {
+    setError("");
+    try {
+      await signOut(auth);
+    } catch (e) {
+      setError(String(e?.message || e));
+    }
+  };
+
+  const writeAndRead = async () => {
+    if (!user) return;
+    setStatus("writing…");
+    setError("");
+    try {
+      const ref = doc(db, "users", user.uid, "debug", "ping");
+      await setDoc(ref, { hello: "world", ts: serverTimestamp() }, { merge: true });
+      setStatus("reading…");
+      const snap = await getDoc(ref);
+      setLastRead(snap.exists() ? snap.data() : null);
+      setStatus("ok");
+    } catch (e) {
+      setError(String(e?.message || e));
+      setStatus("error");
+    }
   };
 
   return (
-    <main className="max-w-3xl mx-auto p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Debug</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            Quick snapshot of the in-browser LifeHub demo state.
-          </p>
+    <main className="max-w-xl mx-auto p-6 space-y-3">
+      <h1 className="text-2xl font-bold">Debug</h1>
+
+      <div className="rounded-md border p-3">
+        <div className="font-medium">Auth</div>
+        <div className="text-sm text-gray-700">
+          {user ? `Signed in as ${user.email || user.uid}` : "Not signed in"}
         </div>
-        <button
-          onClick={resetData}
-          className="px-4 py-2 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-        >
-          Reset demo data
-        </button>
+        <div className="mt-2 flex gap-2">
+          {!user ? (
+            <button onClick={doSignIn} className="px-3 py-2 bg-indigo-600 text-white rounded-md">
+              Sign in with Google
+            </button>
+          ) : (
+            <button onClick={doSignOut} className="px-3 py-2 bg-gray-200 rounded-md">
+              Sign out
+            </button>
+          )}
+        </div>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-            Profile
-          </h2>
-          <p className="mt-2 text-base font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
+      <div className="rounded-md border p-3">
+        <div className="font-medium">Firestore</div>
+        <div className="text-sm text-gray-700 mb-2">
+          Status: {status}
         </div>
-        <div className="rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 p-4">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-            Totals
-          </h2>
-          <dl className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300">
-            <div className="flex justify-between">
-              <dt>Calendars</dt>
-              <dd className="font-medium text-gray-900 dark:text-gray-100">{summary.calendars}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Events</dt>
-              <dd className="font-medium text-gray-900 dark:text-gray-100">{summary.events}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>To-dos</dt>
-              <dd className="font-medium text-gray-900 dark:text-gray-100">{summary.todos}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Planned focus hours</dt>
-              <dd className="font-medium text-gray-900 dark:text-gray-100">{summary.focusedHours}</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-            Export snapshot
-          </h2>
-          <button
-            onClick={exportData}
-            className="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium"
-          >
-            Export JSON
-          </button>
-        </div>
-        {exported ? (
-          <pre className="max-h-80 overflow-auto rounded-md bg-gray-900 text-gray-100 text-xs p-3">
-{exported}
+        <button
+          onClick={writeAndRead}
+          disabled={!user}
+          className="px-3 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50"
+        >
+          Write & Read test doc
+        </button>
+        {lastRead && (
+          <pre className="mt-2 text-sm bg-gray-50 p-2 rounded-md overflow-auto">
+            {JSON.stringify(lastRead, null, 2)}
           </pre>
-        ) : (
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Press “Export JSON” to view the current in-memory dataset. The dump never leaves your browser.
-          </p>
         )}
-      </section>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
     </main>
   );
 }

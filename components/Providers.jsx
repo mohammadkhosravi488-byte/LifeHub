@@ -1,25 +1,20 @@
 "use client";
 
 import { ThemeProvider } from "next-themes";
-import { LifehubDataProvider } from "@/lib/data-context";
 
 /**
  * Global client-only providers.
- * We lean on next-themes to manage a `dark` class on the root element
- * so Tailwind's `dark:` variants and our CSS variables respond correctly.
+ * We disable system theme to avoid hydration flicker and keep full control.
  */
 export default function Providers({ children }) {
   return (
     <ThemeProvider
       attribute="class"
-      defaultTheme="system"
-      enableSystem
+      defaultTheme="light"
+      enableSystem={false}
       enableColorScheme={false}
-      disableTransitionOnChange
-      storageKey="lifehub-theme"
-      themes={["light", "dark"]}
     >
-      <LifehubDataProvider>{children}</LifehubDataProvider>
+      {children}
     </ThemeProvider>
   );
 }

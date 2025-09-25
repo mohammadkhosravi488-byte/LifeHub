@@ -2,26 +2,23 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function DarkModeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration mismatch while next-themes syncs with the DOM
+  // Avoid hydration mismatch
   useEffect(() => setMounted(true), []);
-  const isDark = useMemo(() => resolvedTheme === "dark", [resolvedTheme]);
-
   if (!mounted) return null;
 
   return (
     <button
-      type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="px-3 py-1 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold transition-colors"
-      aria-pressed={isDark}
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className="px-3 py-1 rounded-md border border-gray-300 dark:border-neutral-700
+                 bg-white dark:bg-neutral-800 text-sm font-semibold"
     >
-      {isDark ? "🌞 Light Mode" : "🌙 Dark Mode"}
+      {theme === "dark" ? "🌞 Light Mode" : "🌙 Dark Mode"}
     </button>
   );
 }

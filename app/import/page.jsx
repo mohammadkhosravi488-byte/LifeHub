@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parseIcs } from "@/lib/ics";
-import { useLifehubData } from "@/lib/data-context";
+import { auth, db } from "@/lib/firebase";
+import { doc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 export default function ImportPage() {
-  const { calendars, addEvent } = useLifehubData();
+  const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
-  const [calendarId, setCalendarId] = useState("main");
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, setUser);
+    return () => unsub();
+  }, []);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -26,29 +33,43 @@ export default function ImportPage() {
   };
 
   const saveAll = async () => {
-    if (events.length === 0) return;
+    if (!user || events.length === 0) return;
     setSaving(true);
     let success = 0;
     for (const ev of events) {
       try {
-        addEvent({
-          summary: ev.summary,
-          description: ev.description,
-          location: ev.location,
-          start: ev.start,
-          end: ev.end,
-          allDay: ev.allDay,
-          calendarId,
-        });
-        success += 1;
+        await setDoc(
+          doc(db, "users", user.uid, "events", ev.uid),
+          {
+            summary: ev.summary,
+            location: ev.location,
+            description: ev.description,
+            start: Timestamp.fromDate(ev.start),
+            end: Timestamp.fromDate(ev.end),
+            updatedAt: serverTimestamp(),
+            source: "ics",
+            calendarId: "main", // default to Main
+          },
+          { merge: true }
+        );
+        success++;
         setSavedCount(success);
-      } catch (error) {
-        console.error("Save failed for", ev.summary, error);
+      } catch (e) {
+        console.error("Save failed for", ev.summary, e);
       }
     }
     setSaving(false);
     alert(`Saved ${success} events.`);
   };
+
+  if (!user) {
+    return (
+      <main className="max-w-xl mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-3">Import Calendar (.ics)</h1>
+        <p className="text-gray-800">Please sign in first.</p>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-2xl mx-auto p-6">
@@ -59,22 +80,6 @@ export default function ImportPage() {
         onChange={handleFile}
         className="mb-4"
       />
-      <div className="mb-4 flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Save to calendar:
-        </label>
-        <select
-          value={calendarId}
-          onChange={(e) => setCalendarId(e.target.value)}
-          className="h-9 rounded-md border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm"
-        >
-          {calendars.map((cal) => (
-            <option key={cal.id} value={cal.id}>
-              {cal.name}
-            </option>
-          ))}
-        </select>
-      </div>
       {events.length > 0 && (
         <div className="mb-4">
           <p className="text-gray-800">

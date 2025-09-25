@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLifehubData } from "@/lib/data-context";
+import { db } from "@/lib/firebase";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
-export default function CreateCalendarModal({ open, onClose }) {
-  const { addCalendar } = useLifehubData();
+export default function CreateCalendarModal({ open, onClose, user }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#4f46e5");
   const [saving, setSaving] = useState(false);
@@ -19,16 +19,27 @@ export default function CreateCalendarModal({ open, onClose }) {
 
   if (!open) return null;
 
-  const handleCreate = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
+  const handleCreate = async () => {
+    if (!user || !name.trim()) {
       onClose?.({ created: false });
       return;
     }
-    setSaving(true);
-    const calendar = addCalendar({ name: trimmed, color });
-    setSaving(false);
-    onClose?.({ created: true, calendar });
+    try {
+      setSaving(true);
+      const docRef = await addDoc(collection(db, "calendars"), {
+        name: name.trim(),
+        color,
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      const calendar = { id: docRef.id, name: name.trim(), color };
+      onClose?.({ created: true, calendar });
+    } catch (e) {
+      console.error(e);
+      onClose?.({ created: false, error: String(e) });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
