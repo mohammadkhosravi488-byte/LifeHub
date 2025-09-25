@@ -86,11 +86,7 @@ export default function Home() {
 
   // Build board items
   const items = useMemo(() => {
-    const chosen = selectedCalendarIds.length
-      ? selectedCalendarIds
-      : calendarFilter === "all"
-      ? []
-      : [calendarFilter || "main"];
+    const chosen = selectedCalendarIds;
     const cards = {
       calendar: {
         id: "calendar",

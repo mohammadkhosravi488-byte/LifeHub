@@ -1,5 +1,4 @@
 "use client";
-import DarkModeToggle from "@/components/DarkModeToggle";
 
 import {
   DndContext,
@@ -14,16 +13,18 @@ import {
   arrayMove,
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
-import {CSS} from "@dnd-kit/utilities";
+import { CSS } from "@dnd-kit/utilities";
 
 /**
  * items: [{ id, spanLg?:1|2|3, height?:number, render: ({dragHandleProps}) => JSX }]
  * onReorder: (ids[]) => void
  */
 export default function ConsoleBoard({ items, onReorder }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 }}));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
 
-  const ids = items.map(i => i.id);
+  const ids = items.map((i) => i.id);
 
   const handleDragEnd = (e) => {
     const { active, over } = e;
@@ -58,8 +59,11 @@ function SortableItem({ id, spanLg = 1, children }) {
   };
 
   const colClass =
-    spanLg === 3 ? "lg:col-span-3" :
-    spanLg === 2 ? "lg:col-span-2" : "lg:col-span-1";
+    spanLg === 3
+      ? "lg:col-span-3"
+      : spanLg === 2
+        ? "lg:col-span-2"
+        : "lg:col-span-1";
 
   return (
     <div ref={setNodeRef} style={style} className={colClass}>
