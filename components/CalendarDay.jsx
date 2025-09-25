@@ -22,6 +22,8 @@ export default function CalendarDay({
 }) {
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
+  const [error, setError] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
   const scrollRef = useRef(null);
 
   // auth
@@ -34,6 +36,7 @@ export default function CalendarDay({
   useEffect(() => {
     if (!user) {
       setEvents([]);
+      setError(null);
       return;
     }
 
@@ -66,15 +69,17 @@ export default function CalendarDay({
           });
         });
         setEvents(arr);
+        setError(null);
       },
-      (error) => {
-        console.error("Day fetch failed", error);
+      (err) => {
+        console.error("Day fetch failed", err);
         setEvents([]);
+        setError(err);
       }
     );
 
     return () => unsub();
-  }, [user, date]);
+  }, [user, date, refreshToken]);
 
   useEffect(() => {
     if (!onCalendarsDiscovered) return;
@@ -150,6 +155,20 @@ export default function CalendarDay({
     day: "numeric",
   }).format(date);
 
+  const errorMessage = error
+    ? error.code === "permission-denied"
+      ? "We don’t have permission to load this calendar. Ask the owner to share it or adjust your Firestore rules."
+      : "We couldn’t load your events."
+    : null;
+
+  if (!user) {
+    return (
+      <div className="h-[640px] rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+        Sign in to see your schedule.
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       {/* Top bar inside card */}
@@ -163,64 +182,77 @@ export default function CalendarDay({
         <div className="text-xl font-bold">{dayLabel}</div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="relative border border-gray-200 rounded-2xl bg-white"
-        style={{ height: 640, overflowY: "auto" }}
-      >
-        <div className="grid" style={{ gridTemplateColumns: "80px 1fr" }}>
-          {/* time ruler */}
-          <div className="relative">
-            {hours.map((h) => (
-              <div
-                key={h}
-                className="pr-2 text-right text-gray-500 border-b border-gray-100"
-                style={{ height: HOUR_ROW_PX, lineHeight: `${HOUR_ROW_PX}px` }}
-              >
-                {new Intl.DateTimeFormat(undefined, {
-                  hour: "numeric",
-                }).format(new Date(2000, 0, 1, h))}
-              </div>
-            ))}
-          </div>
-
-          {/* event canvas */}
-          <div className="relative border-l border-gray-100">
-            <div
-              className="relative"
-              style={{ height: 24 * HOUR_ROW_PX }}
-            >
-              {/* hour grid lines */}
+      {errorMessage ? (
+        <div className="h-[640px] border border-dashed border-rose-300 dark:border-rose-700 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+          <button
+            type="button"
+            onClick={() => setRefreshToken((x) => x + 1)}
+            className="px-3 h-9 rounded-lg border border-rose-300 bg-white text-sm font-semibold text-rose-600 dark:border-rose-600 dark:text-rose-200 dark:bg-transparent"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <div
+          ref={scrollRef}
+          className="relative border border-gray-200 rounded-2xl bg-white dark:border-gray-700 dark:bg-gray-900"
+          style={{ height: 640, overflowY: "auto" }}
+        >
+          <div className="grid" style={{ gridTemplateColumns: "80px 1fr" }}>
+            {/* time ruler */}
+            <div className="relative">
               {hours.map((h) => (
                 <div
                   key={h}
-                  className="absolute left-0 right-0 border-b border-gray-100"
-                  style={{ top: h * HOUR_ROW_PX, height: HOUR_ROW_PX }}
-                />
-              ))}
-
-              {/* events */}
-              {positioned.map((ev) => (
-                <div
-                  key={ev.id}
-                  className={`absolute left-3 right-6 rounded-2xl px-3 py-2 text-sm font-semibold text-white shadow-sm ${outlineForPriority(
-                    ev.priority
-                  )}`}
-                  style={{
-                    top: ev.top,
-                    height: ev.height,
-                    background: ev.color,
-                  }}
-                  title={`${ev.title}`}
-                  aria-label={`${ev.title}`}
+                  className="pr-2 text-right text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800"
+                  style={{ height: HOUR_ROW_PX, lineHeight: `${HOUR_ROW_PX}px` }}
                 >
-                  {ev.title}
+                  {new Intl.DateTimeFormat(undefined, {
+                    hour: "numeric",
+                  }).format(new Date(2000, 0, 1, h))}
                 </div>
               ))}
             </div>
+
+            {/* event canvas */}
+            <div className="relative border-l border-gray-100 dark:border-gray-800">
+              <div
+                className="relative"
+                style={{ height: 24 * HOUR_ROW_PX }}
+              >
+                {/* hour grid lines */}
+                {hours.map((h) => (
+                  <div
+                    key={h}
+                    className="absolute left-0 right-0 border-b border-gray-100 dark:border-gray-800"
+                    style={{ top: h * HOUR_ROW_PX, height: HOUR_ROW_PX }}
+                  />
+                ))}
+
+                {/* events */}
+                {positioned.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className={`absolute left-3 right-6 rounded-2xl px-3 py-2 text-sm font-semibold text-white shadow-sm ${outlineForPriority(
+                      ev.priority
+                    )}`}
+                    style={{
+                      top: ev.top,
+                      height: ev.height,
+                      background: ev.color,
+                    }}
+                    title={`${ev.title}`}
+                    aria-label={`${ev.title}`}
+                  >
+                    {ev.title}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

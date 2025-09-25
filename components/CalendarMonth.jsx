@@ -63,6 +63,9 @@ export default function CalendarMonth({
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]); // {id,title,start,calendarId,priority}
   const [todos, setTodos] = useState([]);   // {id,title,due,calendarId,priority,completed}
+  const [eventsError, setEventsError] = useState(null);
+  const [todosError, setTodosError] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -73,6 +76,8 @@ export default function CalendarMonth({
     if (!user) {
       setEvents([]);
       setTodos([]);
+      setEventsError(null);
+      setTodosError(null);
     }
   }, [user]);
 
@@ -89,23 +94,32 @@ export default function CalendarMonth({
       where("start", "<=", Timestamp.fromDate(monthEnd)),
       orderBy("start", "asc")
     );
-    const unsub = onSnapshot(qEv, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        list.push({
-          id: d.id,
-          title: data.summary || data.title || "(no title)",
-          start: toDate(data.start),
-          end: toDate(data.end),
-          calendarId: data.calendarId || "main",
-          priority: data.priority || "none",
+    const unsub = onSnapshot(
+      qEv,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          list.push({
+            id: d.id,
+            title: data.summary || data.title || "(no title)",
+            start: toDate(data.start),
+            end: toDate(data.end),
+            calendarId: data.calendarId || "main",
+            priority: data.priority || "none",
+          });
         });
-      });
-      setEvents(list);
-    });
+        setEvents(list);
+        setEventsError(null);
+      },
+      (error) => {
+        console.error("Month events failed", error);
+        setEvents([]);
+        setEventsError(error);
+      }
+    );
     return () => unsub();
-  }, [user, monthStart.getTime(), monthEnd.getTime()]);
+  }, [user, monthStart.getTime(), monthEnd.getTime(), refreshToken]);
 
   // Fetch todos that have due date in month (users/{uid}/todos)
   useEffect(() => {
@@ -115,25 +129,34 @@ export default function CalendarMonth({
       collection(db, "users", user.uid, "todos"),
       orderBy("createdAt", "desc")
     );
-    const unsub = onSnapshot(qTd, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        const due = toDate(data.due);
-        // Keep all; we’ll filter by range/client-side to avoid new indexes
-        list.push({
-          id: d.id,
-          title: data.text || data.title || "(untitled task)",
-          due,
-          completed: !!data.completed,
-          calendarId: data.calendarId || "main",
-          priority: data.priority || "none",
+    const unsub = onSnapshot(
+      qTd,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          const due = toDate(data.due);
+          // Keep all; we’ll filter by range/client-side to avoid new indexes
+          list.push({
+            id: d.id,
+            title: data.text || data.title || "(untitled task)",
+            due,
+            completed: !!data.completed,
+            calendarId: data.calendarId || "main",
+            priority: data.priority || "none",
+          });
         });
-      });
-      setTodos(list);
-    });
+        setTodos(list);
+        setTodosError(null);
+      },
+      (error) => {
+        console.error("Month todos failed", error);
+        setTodos([]);
+        setTodosError(error);
+      }
+    );
     return () => unsub();
-  }, [user]);
+  }, [user, refreshToken]);
 
   useEffect(() => {
     if (!onCalendarsDiscovered) return;
@@ -200,94 +223,122 @@ export default function CalendarMonth({
     return map;
   }, [events, todos, activeCalendars, monthStart.getTime(), monthEnd.getTime()]);
 
+  const combinedError = eventsError || todosError;
+  const errorMessage = combinedError
+    ? combinedError.code === "permission-denied"
+      ? "We don’t have permission to load these calendars. Ask the owner to share them or adjust your Firestore rules."
+      : "We couldn’t load this month’s data."
+    : null;
+
+  if (!user) {
+    return (
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 h-[640px] flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+        Sign in to see your calendars.
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
       <div className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
         {currentDate.toLocaleString(undefined, { month: "long", year: "numeric" })}
       </div>
 
-      <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-        {/* Weekday headers */}
-        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((w) => (
-          <div
-            key={w}
-            className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-semibold px-2 py-2"
+      {errorMessage ? (
+        <div className="h-[560px] border border-dashed border-rose-300 dark:border-rose-700 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+          <button
+            type="button"
+            onClick={() => setRefreshToken((x) => x + 1)}
+            className="px-3 h-9 rounded-lg border border-rose-300 bg-white text-sm font-semibold text-rose-600 dark:border-rose-600 dark:text-rose-200 dark:bg-transparent"
           >
-            {w}
-          </div>
-        ))}
-
-        {/* Day cells */}
-        {monthCells.map((day) => {
-          const inMonth = day.getMonth() === currentDate.getMonth();
-          const key = day.toISOString().slice(0, 10);
-          const bucket = itemsByDay.get(key) || { events: [], todos: [] };
-
-          return (
+            Try again
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+          {/* Weekday headers */}
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((w) => (
             <div
-              key={key}
-              className={[
-                "min-h-28 bg-white dark:bg-gray-900 px-2 py-2",
-                !inMonth ? "opacity-50" : "",
-              ].join(" ")}
+              key={w}
+              className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-semibold px-2 py-2"
             >
-              <div className="flex items-center justify-between">
-                <div
-                  className={[
-                    "text-sm font-semibold",
-                    "text-gray-800 dark:text-gray-100",
-                  ].join(" ")}
-                >
-                  {day.getDate()}
-                </div>
-                {/* Counts */}
-                {(bucket.events.length > 0 || bucket.todos.length > 0) && (
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                    {bucket.events.length} ev • {bucket.todos.length} td
-                  </div>
-                )}
-              </div>
-
-              {/* Items list: show up to 4 (events first), then +N */}
-              <div className="mt-2 space-y-1">
-                {[...bucket.events, ...bucket.todos.slice(0)].slice(0, 4).map((it) => {
-                  const isTodo = "completed" in it;
-                  const bg = byCalendarColor(it.calendarId, "#93c5fd"); // light blue fallback
-                  const textClass = "text-gray-900 dark:text-white"; // readable on our solid bg
-                  const borderColor =
-                    it.priority === "high"
-                      ? "border-red-500"
-                      : it.priority === "med" || it.priority === "medium"
-                      ? "border-green-500"
-                      : it.priority === "low"
-                      ? "border-blue-500"
-                      : "border-gray-300 dark:border-gray-600";
-
-                  return (
-                    <div
-                      key={`${isTodo ? "td" : "ev"}-${it.id}`}
-                      className={`text-xs font-medium rounded-md px-2 py-1 border ${textClass}`}
-                      style={{ backgroundColor: bg }}
-                      title={isTodo ? "Task" : "Event"}
-                    >
-                      <div className={`rounded-sm border-2 ${borderColor} px-1`}>
-                        {isTodo ? "✓ " : ""}
-                        {it.title}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {bucket.events.length + bucket.todos.length > 4 && (
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                    +{bucket.events.length + bucket.todos.length - 4} more
-                  </div>
-                )}
-              </div>
+              {w}
             </div>
-          );
-        })}
-      </div>
+          ))}
+
+          {/* Day cells */}
+          {monthCells.map((day) => {
+            const inMonth = day.getMonth() === currentDate.getMonth();
+            const key = day.toISOString().slice(0, 10);
+            const bucket = itemsByDay.get(key) || { events: [], todos: [] };
+
+            return (
+              <div
+                key={key}
+                className={[
+                  "min-h-28 bg-white dark:bg-gray-900 px-2 py-2",
+                  !inMonth ? "opacity-50" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between">
+                  <div
+                    className={[
+                      "text-sm font-semibold",
+                      "text-gray-800 dark:text-gray-100",
+                    ].join(" ")}
+                  >
+                    {day.getDate()}
+                  </div>
+                  {/* Counts */}
+                  {(bucket.events.length > 0 || bucket.todos.length > 0) && (
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                      {bucket.events.length} ev • {bucket.todos.length} td
+                    </div>
+                  )}
+                </div>
+
+                {/* Items list: show up to 4 (events first), then +N */}
+                <div className="mt-2 space-y-1">
+                  {[...bucket.events, ...bucket.todos.slice(0)].slice(0, 4).map((it) => {
+                    const isTodo = "completed" in it;
+                    const bg = byCalendarColor(it.calendarId, "#93c5fd"); // light blue fallback
+                    const textClass = "text-gray-900 dark:text-white"; // readable on our solid bg
+                    const borderColor =
+                      it.priority === "high"
+                        ? "border-red-500"
+                        : it.priority === "med" || it.priority === "medium"
+                        ? "border-green-500"
+                        : it.priority === "low"
+                        ? "border-blue-500"
+                        : "border-gray-300 dark:border-gray-600";
+
+                    return (
+                      <div
+                        key={`${isTodo ? "td" : "ev"}-${it.id}`}
+                        className={`text-xs font-medium rounded-md px-2 py-1 border ${textClass}`}
+                        style={{ backgroundColor: bg }}
+                        title={isTodo ? "Task" : "Event"}
+                      >
+                        <div className={`rounded-sm border-2 ${borderColor} px-1`}>
+                          {isTodo ? "✓ " : ""}
+                          {it.title}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {bucket.events.length + bucket.todos.length > 4 && (
+                    <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                      +{bucket.events.length + bucket.todos.length - 4} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

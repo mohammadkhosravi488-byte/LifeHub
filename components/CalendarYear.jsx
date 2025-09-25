@@ -41,6 +41,9 @@ export default function CalendarYear({
   const [user, setUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [todos, setTodos] = useState([]);
+  const [eventsError, setEventsError] = useState(null);
+  const [todosError, setTodosError] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -51,6 +54,8 @@ export default function CalendarYear({
     if (!user) {
       setEvents([]);
       setTodos([]);
+      setEventsError(null);
+      setTodosError(null);
     }
   }, [user]);
 
@@ -66,21 +71,30 @@ export default function CalendarYear({
       where("start", "<=", Timestamp.fromDate(yEnd)),
       orderBy("start", "asc")
     );
-    const unsub = onSnapshot(qEv, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        list.push({
-          id: d.id,
-          title: data.summary || data.title || "(no title)",
-          start: toDate(data.start),
-          calendarId: data.calendarId || "main",
+    const unsub = onSnapshot(
+      qEv,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          list.push({
+            id: d.id,
+            title: data.summary || data.title || "(no title)",
+            start: toDate(data.start),
+            calendarId: data.calendarId || "main",
+          });
         });
-      });
-      setEvents(list);
-    });
+        setEvents(list);
+        setEventsError(null);
+      },
+      (error) => {
+        console.error("Year events failed", error);
+        setEvents([]);
+        setEventsError(error);
+      }
+    );
     return () => unsub();
-  }, [user, yStart.getTime(), yEnd.getTime()]);
+  }, [user, yStart.getTime(), yEnd.getTime(), refreshToken]);
 
   // todos (we’ll just count/peek by month if due is set)
   useEffect(() => {
@@ -89,22 +103,31 @@ export default function CalendarYear({
       collection(db, "users", user.uid, "todos"),
       orderBy("createdAt", "desc")
     );
-    const unsub = onSnapshot(qTd, (snap) => {
-      const list = [];
-      snap.forEach((d) => {
-        const data = d.data() || {};
-        list.push({
-          id: d.id,
-          title: data.text || data.title || "(untitled task)",
-          due: toDate(data.due),
-          calendarId: data.calendarId || "main",
-          completed: !!data.completed,
+    const unsub = onSnapshot(
+      qTd,
+      (snap) => {
+        const list = [];
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          list.push({
+            id: d.id,
+            title: data.text || data.title || "(untitled task)",
+            due: toDate(data.due),
+            calendarId: data.calendarId || "main",
+            completed: !!data.completed,
+          });
         });
-      });
-      setTodos(list);
-    });
+        setTodos(list);
+        setTodosError(null);
+      },
+      (error) => {
+        console.error("Year todos failed", error);
+        setTodos([]);
+        setTodosError(error);
+      }
+    );
     return () => unsub();
-  }, [user]);
+  }, [user, refreshToken]);
 
   useEffect(() => {
     if (!onCalendarsDiscovered) return;
@@ -151,48 +174,76 @@ export default function CalendarYear({
     return g;
   }, [events, todos, activeCalendars]);
 
+  const combinedError = eventsError || todosError;
+  const errorMessage = combinedError
+    ? combinedError.code === "permission-denied"
+      ? "We don’t have permission to load these calendars. Ask the owner to share them or adjust your Firestore rules."
+      : "We couldn’t load your yearly data."
+    : null;
+
+  if (!user) {
+    return (
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 h-[640px] flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+        Sign in to see your yearly summary.
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
       <div className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">
         {currentDate.getFullYear()}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        {grouped.map((bucket, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800"
+      {errorMessage ? (
+        <div className="h-[560px] border border-dashed border-rose-300 dark:border-rose-700 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 flex flex-col items-center justify-center gap-3 text-center px-6">
+          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+          <button
+            type="button"
+            onClick={() => setRefreshToken((x) => x + 1)}
+            className="px-3 h-9 rounded-lg border border-rose-300 bg-white text-sm font-semibold text-rose-600 dark:border-rose-600 dark:text-rose-200 dark:bg-transparent"
           >
-            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
-              {monthLabel(i)}
-            </div>
-
-            <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">
-              {bucket.events.length} events • {bucket.todos.length} tasks
-            </div>
-
-            {/* Peek list (up to 5 items) */}
-            <ul className="space-y-1">
-              {[...bucket.events.slice(0, 3), ...bucket.todos.slice(0, 2)].map((it) => (
-                <li
-                  key={`${"completed" in it ? "td" : "ev"}-${it.id}`}
-                  className="truncate text-xs px-2 py-1 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100"
-                  title={it.title}
-                >
-                  {"completed" in it ? "✓ " : ""}
-                  {it.title}
-                </li>
-              ))}
-            </ul>
-
-            {bucket.events.length + bucket.todos.length > 5 && (
-              <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
-                +{bucket.events.length + bucket.todos.length - 5} more
+            Try again
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          {grouped.map((bucket, i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800"
+            >
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                {monthLabel(i)}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+
+              <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">
+                {bucket.events.length} events • {bucket.todos.length} tasks
+              </div>
+
+              {/* Peek list (up to 5 items) */}
+              <ul className="space-y-1">
+                {[...bucket.events.slice(0, 3), ...bucket.todos.slice(0, 2)].map((it) => (
+                  <li
+                    key={`${"completed" in it ? "td" : "ev"}-${it.id}`}
+                    className="truncate text-xs px-2 py-1 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100"
+                    title={it.title}
+                  >
+                    {"completed" in it ? "✓ " : ""}
+                    {it.title}
+                  </li>
+                ))}
+              </ul>
+
+              {bucket.events.length + bucket.todos.length > 5 && (
+                <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
+                  +{bucket.events.length + bucket.todos.length - 5} more
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

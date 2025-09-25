@@ -27,6 +27,8 @@ export default function TodoList({
   const [due, setDue] = useState("");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
@@ -38,6 +40,7 @@ export default function TodoList({
 
     if (!user) {
       setTasks([]);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -59,17 +62,19 @@ export default function TodoList({
           });
         });
         setTasks(rows);
+        setError(null);
         setLoading(false);
       },
       (error) => {
         console.error("Failed to load todos", error);
         setTasks([]);
+        setError(error);
         setLoading(false);
       }
     );
 
     return () => unsub();
-  }, [user]);
+  }, [user, refreshToken]);
 
   const visible = useMemo(() => {
     let list = tasks;
@@ -158,8 +163,14 @@ export default function TodoList({
     }
   }
 
+  const errorMessage = error
+    ? error.code === "permission-denied"
+      ? "We don’t have permission to load your tasks. Ask the owner to share the calendar or adjust your Firestore rules."
+      : "We couldn’t load your tasks."
+    : null;
+
   if (!user) {
-    return <p className="text-sm text-gray-500">Sign in to manage tasks.</p>;
+    return <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to manage tasks.</p>;
   }
 
   return (
@@ -188,6 +199,17 @@ export default function TodoList({
 
       {loading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>
+      ) : errorMessage ? (
+        <div className="border border-dashed border-rose-300 dark:border-rose-700 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 flex flex-col items-center justify-center gap-3 text-center px-4 py-6">
+          <p className="text-sm text-rose-600 dark:text-rose-300">{errorMessage}</p>
+          <button
+            type="button"
+            onClick={() => setRefreshToken((x) => x + 1)}
+            className="px-3 h-9 rounded-lg border border-rose-300 bg-white text-sm font-semibold text-rose-600 dark:border-rose-600 dark:text-rose-200 dark:bg-transparent"
+          >
+            Try again
+          </button>
+        </div>
       ) : visible.length ? (
         <ul className="divide-y divide-gray-200 dark:divide-gray-800">
           {visible.map((t) => {
