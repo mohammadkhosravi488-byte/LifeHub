@@ -1,61 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection,
   addDoc,
-  serverTimestamp,
+  collection,
+  deleteDoc,
+  doc,
   onSnapshot,
   orderBy,
   query,
-  doc,
-  deleteDoc,
+  serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
 
-export default function TodoList() {
+export default function TodoList({
+  calendarFilter = "all",
+  search = "",
+  selectedCalendarIds = [],
+}) {
   const [user, setUser] = useState(null);
-  const [text, setText] = useState("");
   const [todos, setTodos] = useState([]);
+  const [text, setText] = useState("");
+  const [calendarId, setCalendarId] = useState("main");
+  const [due, setDue] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Watch auth state
+  // auth
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
     return () => unsub();
   }, []);
 
-  // Watch the user's todos in real-time
+  // load todos
   useEffect(() => {
-    if (!user) {
-      setTodos([]);
-      return;
-    }
+    if (!user) return;
     const q = query(
       collection(db, "users", user.uid, "todos"),
       orderBy("createdAt", "desc")
     );
     const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setTodos(items);
+      const list = [];
+      snap.forEach((d) => {
+        const data = d.data() || {};
+        list.push({
+          id: d.id,
+          text: data.text || "(untitled task)",
+          calendarId: data.calendarId || "main",
+          due: data.due?.toDate?.() || null,
+          done: !!data.done,
+        });
+      });
+      setTodos(list);
     });
     return () => unsub();
   }, [user]);
 
-  const addTodo = async (e) => {
-    e.preventDefault();
-    const t = text.trim();
-    if (!user || !t) return;
-    await addDoc(collection(db, "users", user.uid, "todos"), {
-      text: t,
-      done: false,
-      createdAt: serverTimestamp(),
+  // derived visible list
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const selected = selectedCalendarIds.length
+      ? new Set(selectedCalendarIds)
+      : null;
+
+    return todos.filter((todo) => {
+      const cal = todo.calendarId || "main";
+      if (calendarFilter !== "all" && cal !== calendarFilter) return false;
+      if (selected && !selected.has(cal)) return false;
+      if (q && !todo.text.toLowerCase().includes(q)) return false;
+      return true;
     });
-    setText("");
+  }, [todos, calendarFilter, selectedCalendarIds, search]);
+
+  // actions
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const value = text.trim();
+    if (!value || !user) return;
+
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "users", user.uid, "todos"), {
+        text: value,
+        calendarId: calendarId || "main",
+        due: due ? new Date(`${due}T23:59:59`) : null,
+        done: false,
+        createdAt: serverTimestamp(),
+      });
+      setText("");
+      setDue("");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggleDone = async (id, done) => {
+  const toggleTodo = async (id, done) => {
     if (!user) return;
     await updateDoc(doc(db, "users", user.uid, "todos", id), { done: !done });
   };
@@ -66,54 +106,87 @@ export default function TodoList() {
   };
 
   if (!user) {
-    return (
-      <p className="text-gray-600 text-sm">
-        Sign in to create your to-dos.
-      </p>
-    );
+    return <p className="text-sm text-gray-500">Sign in to see your to-dos.</p>;
   }
 
   return (
-    <div className="w-full max-w-md space-y-4">
-      <form onSubmit={addTodo} className="flex gap-2">
+    <div className="w-full space-y-4">
+      {/* add form */}
+      <form
+        onSubmit={handleSubmit}
+        className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]"
+      >
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Add a to-do…"
-          className="flex-1 rounded-lg border px-3 py-2"
+          className="h-10 rounded-lg border border-gray-300 px-3 text-sm"
         />
+        <input
+          type="date"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="h-10 rounded-lg border border-gray-300 px-3 text-sm"
+        />
+        <select
+          value={calendarId}
+          onChange={(e) => setCalendarId(e.target.value)}
+          className="h-10 rounded-lg border border-gray-300 px-2 text-sm"
+        >
+          <option value="main">Personal</option>
+          {/* more calendars can be injected if you manage them */}
+        </select>
         <button
           type="submit"
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium"
+          disabled={saving}
+          className="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60"
         >
-          Add
+          {saving ? "Adding…" : "Add"}
         </button>
       </form>
 
-      <ul className="space-y-2">
-  {todos.map((t) => (
-    <li
-      key={t.id}
-      className="flex items-center justify-between rounded-lg border bg-gray-50 px-4 py-3 hover:bg-gray-100 transition"
-    >
-      <button
-        onClick={() => toggleDone(t.id, t.done)}
-        className={`text-left flex-1 ${
-          t.done ? "line-through text-gray-400" : "text-gray-800"
-        }`}
-      >
-        {t.text}
-      </button>
-      <button
-        onClick={() => removeTodo(t.id)}
-        className="text-red-500 text-sm hover:underline"
-      >
-        Delete
-      </button>
-    </li>
-  ))}
-</ul>
-
+      {/* list */}
+      {visible.length === 0 ? (
+        <p className="text-sm text-gray-500">Nothing to show right now.</p>
+      ) : (
+        <ul className="space-y-2">
+          {visible.map((todo) => (
+            <li
+              key={todo.id}
+              className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 hover:bg-gray-100 transition"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => toggleTodo(todo.id, todo.done)}
+                  className={`text-left flex-1 text-sm ${
+                    todo.done
+                      ? "line-through text-gray-400"
+                      : "text-gray-800"
+                  }`}
+                >
+                  {todo.text}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeTodo(todo.id)}
+                  className="text-red-500 text-xs font-medium hover:underline"
+                >
+                  Delete
+                </button>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-3 text-[11px] uppercase tracking-wide text-gray-500">
+                <span>{todo.calendarId || "main"}</span>
+                {todo.due ? (
+                  <span>
+                    Due {todo.due.toLocaleDateString(undefined, { dateStyle: "medium" })}
+                  </span>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
