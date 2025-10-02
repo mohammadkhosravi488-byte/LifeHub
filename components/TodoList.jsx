@@ -2,7 +2,9 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { LifehubDataProvider } from "@/lib/data-context";
+
 export default function TodoList({ todos = [], addTodo, toggleTodo, removeTodo }) {
+  const { todos, addTodo, toggleTodo, removeTodo } = useLifehubData();
   const [text, setText] = useState("");
   const [due, setDue] = useState("");
 

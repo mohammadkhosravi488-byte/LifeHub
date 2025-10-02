@@ -4,7 +4,7 @@ import { format, startOfMonth, endOfMonth, isSameDay, addMonths } from "date-fns
 import { LifehubDataProvider } from "@/lib/data-context";
 export default function CalendarYear({ events = [] }) {
   const [year, setYear] = useState(new Date().getFullYear());
-
+  const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const months = Array.from({ length: 12 }, (_, i) => {
     const date = new Date(year, i, 1);
     const start = startOfMonth(date);

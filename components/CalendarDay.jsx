@@ -2,6 +2,7 @@
 import { format } from "date-fns";
 import { LifehubDataProvider } from "@/lib/data-context";
 export default function CalendarDay({ currentDate = new Date(), events = [] }) {
+  const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const dayLabel = format(currentDate, "EEEE, MMMM d"); // e.g. Thursday, October 2
 
   return (

@@ -6,6 +6,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function CalendarMonth({ events = [] }) {
   const [referenceDate, setReferenceDate] = useState(new Date());
+  const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const monthStart = startOfMonth(referenceDate);
   const monthEnd = endOfMonth(referenceDate);
   const today = new Date();
