@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { format, startOfMonth, endOfMonth, isSameDay, addMonths } from "date-fns";
 import { LifehubDataProvider } from "@/lib/data-context";
-export default function CalendarYear({ events = [] }) {
+export default function CalendarYear({ currentDate = new Date() }) {
   const [year, setYear] = useState(new Date().getFullYear());
   const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const months = Array.from({ length: 12 }, (_, i) => {

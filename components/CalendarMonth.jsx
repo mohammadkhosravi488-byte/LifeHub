@@ -4,7 +4,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSa
 import { LifehubDataProvider } from "@/lib/data-context";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function CalendarMonth({ events = [] }) {
+export default function CalendarMonth({ currentDate = new Date() }) {
   const [referenceDate, setReferenceDate] = useState(new Date());
   const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const monthStart = startOfMonth(referenceDate);
