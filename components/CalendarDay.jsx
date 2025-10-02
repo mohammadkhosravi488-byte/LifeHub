@@ -19,7 +19,7 @@ export default function CalendarDay({ date = new Date() }) {
   const [events, setEvents] = useState([]);
   const scrollRef = useRef(null);
 
-  // auth
+  // aut
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
     return () => unsub();
