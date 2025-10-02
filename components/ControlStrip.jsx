@@ -1,5 +1,5 @@
 "use client";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onAuthStateChanged } from "firebase/auth";

@@ -1,5 +1,5 @@
 "use client";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 import { useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, doc, updateDoc, arrayUnion } from "firebase/firestore";

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function ThemeProvider({ children }) {
   const [ready, setReady] = useState(false);
 

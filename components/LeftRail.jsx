@@ -1,3 +1,6 @@
+
+import { LifehubDataProvider } from "@/lib/data-context";
+
 export default function LeftRail(){
   return (
     <aside

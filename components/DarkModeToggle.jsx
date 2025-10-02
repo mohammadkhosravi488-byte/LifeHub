@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function DarkModeToggle() {
   const [dark, setDark] = useState(false);
 

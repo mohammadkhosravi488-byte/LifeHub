@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function AIConsole() {
   const [text, setText] = useState("");
 

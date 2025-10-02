@@ -6,7 +6,7 @@ import { auth, googleProvider } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import ThemeToggle from "@/components/ThemeToggle";
 import DarkModeToggle from "@/components/DarkModeToggle";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 
 export default function AuthButtons() {
   const [user, setUser] = useState(null);

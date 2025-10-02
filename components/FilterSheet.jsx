@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function FilterSheet({ open, onClose }) {
   const [user, setUser] = useState(null);
   const [cals, setCals] = useState([]);

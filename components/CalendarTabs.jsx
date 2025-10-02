@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function CalendarTabs({ value, onChange, onCalendarsDiscovered }) {
   const [user, setUser] = useState(null);
   const [calendars, setCalendars] = useState([{ id: "main", name: "Main" }]);

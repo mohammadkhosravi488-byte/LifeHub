@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function HeaderBar() {
   const [user, setUser] = useState(null);
   useEffect(() => onAuthStateChanged(auth, setUser), []);

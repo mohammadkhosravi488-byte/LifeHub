@@ -1,5 +1,5 @@
 "use client";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 import {
   DndContext,
   PointerSensor,

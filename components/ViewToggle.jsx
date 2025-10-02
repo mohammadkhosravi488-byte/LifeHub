@@ -1,5 +1,5 @@
 "use client";
-
+import { LifehubDataProvider } from "@/lib/data-context";
 export default function ViewToggle({ value, onChange, onCycle }) {
   return (
     <div className="flex items-center gap-2">
