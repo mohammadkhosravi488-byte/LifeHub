@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameDay } from "date-fns";
+import { useLifehubData } from "@/lib/data-context";
 import { LifehubDataProvider } from "@/lib/data-context";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 

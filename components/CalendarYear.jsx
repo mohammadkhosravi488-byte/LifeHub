@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useLifehubData } from "@/lib/data-context";
 import { format, startOfMonth, endOfMonth, isSameDay, addMonths } from "date-fns";
 import { LifehubDataProvider } from "@/lib/data-context";
 export default function CalendarYear({ currentDate = new Date() }) {

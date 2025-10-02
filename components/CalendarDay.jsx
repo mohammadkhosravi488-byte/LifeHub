@@ -1,5 +1,6 @@
 "use client";
 import { format } from "date-fns";
+import { useLifehubData } from "@/lib/data-context";
 import { LifehubDataProvider } from "@/lib/data-context";
 export default function CalendarDay({ currentDate = new Date() }) {
   const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();

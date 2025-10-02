@@ -2,7 +2,9 @@
 import { useMemo } from "react";
 import { format } from "date-fns";
 import { LifehubDataProvider } from "@/lib/data-context";
-export default function Upcoming({ events = [] }) {
+import { useLifehubData } from "@/lib/data-context";
+
+export default function Upcoming() {
   const { events, calendars, addEvent, updateEvent, removeEvent } = useLifehubData();
   const visible = useMemo(() => {
     const now = new Date();
