@@ -4,19 +4,65 @@
    Design tokens (light / dark)
 --------------------------------*/
 :root {
-  --ink: #0f172a;            /* slate-900 */
-  --ink-muted: #475569;      /* slate-600 */
-  --bg: #f8fafc;             /* slate-50 */
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --ink-inverse: #ffffff;
+
+  --bg: #f8fafc;
+  --bg-muted: #f1f5f9;
   --card-bg: #ffffff;
-  --outline-neutral: #e5e7eb;/* gray-200 */
+
+  --outline-neutral: #e5e7eb;
+  --outline-strong: #cbd5e1;
+
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-muted: #e0e7ff;
+
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --error: #dc2626;
+
+  --btn-bg: var(--brand);
+  --btn-bg-hover: var(--brand-hover);
+  --btn-text: var(--ink-inverse);
+  --btn-border: transparent;
+
+  --btn-secondary-bg: var(--card-bg);
+  --btn-secondary-hover: var(--bg-muted);
+  --btn-secondary-text: var(--ink);
+  --btn-secondary-border: var(--outline-neutral);
 }
 
-:root.dark {
-  --ink: #e5e7eb;            /* gray-200 */
-  --ink-muted: #94a3b8;      /* slate-400 */
-  --bg: #0b1220;             /* deep navy */
-  --card-bg: #0f172a;        /* slate-900 */
-  --outline-neutral: #1f2937;/* gray-800 */
+html.dark {
+  --ink: #e5e7eb;
+  --ink-muted: #94a3b8;
+  --ink-inverse: #0f172a;
+
+  --bg: #0b1220;
+  --bg-muted: #1e293b;
+  --card-bg: #0f172a;
+
+  --outline-neutral: #1f2937;
+  --outline-strong: #334155;
+
+  --brand: #818cf8;
+  --brand-hover: #6366f1;
+  --brand-muted: #1e1b4b;
+
+  --success: #22c55e;
+  --warning: #fbbf24;
+  --error: #ef4444;
+
+  --btn-bg: var(--brand);
+  --btn-bg-hover: var(--brand-hover);
+  --btn-text: var(--ink-inverse);
+  --btn-border: transparent;
+
+  --btn-secondary-bg: var(--card-bg);
+  --btn-secondary-hover: var(--bg-muted);
+  --btn-secondary-text: var(--ink);
+  --btn-secondary-border: var(--outline-neutral);
 }
 
 /* Base scaffolding */
@@ -24,9 +70,43 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* Optional helpers */
-.card { @apply border rounded-2xl; }
-::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-thumb { background: var(--outline-neutral); border-radius: 8px; }
+/* Helpers */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--outline-neutral);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  height: 2.25rem;
+  padding: 0 1rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.btn-primary {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid var(--btn-border);
+}
+.btn-primary:hover {
+  background: var(--btn-bg-hover);
+}
+
+.btn-secondary {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
+}
+.btn-secondary:hover {
+  background: var(--btn-secondary-hover);
+}

@@ -9,15 +9,13 @@ export const metadata = {
   description: "Your all-in-one hub",
 };
 
-
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
-        <LifehubDataProvider>
-          {children}
-        </LifehubDataProvider>
+      <body className="min-h-screen">
+        <LifehubDataProvider>{children}</LifehubDataProvider>
       </body>
     </html>
   );
 }
+

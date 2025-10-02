@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import AddEventButton from "@/components/AddEventButton";
+import AddEventExpandable from "@/components/AddEventExpandable";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import CreateCalendarModal from "@/components/CreateCalendarModal";
@@ -31,36 +31,38 @@ export default function Home() {
     setViewMode((m) => (m === "day" ? "month" : m === "month" ? "year" : "day"));
 
   // Tabs / filters / search
-  const [calendarFilter, setCalendarFilter] = useState("main"); // default Main only
+  const [calendarFilter, setCalendarFilter] = useState("main");
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [availableCalendars, setAvailableCalendars] = useState([]); // discovered from DB
-  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]); // multi-select
+  const [availableCalendars, setAvailableCalendars] = useState([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState([]);
 
   // Create Calendar modal
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Draggable board order (persist in localStorage)
- const [order, setOrder] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_ORDER;
-    try {
-      const saved = JSON.parse(localStorage.getItem("lh_board_order"));
-      return Array.isArray(saved) && saved.length ? saved : DEFAULT_ORDER;
-    } catch {
-      return DEFAULT_ORDER;
-    }
-  });
-
+  // Draggable board order (persist in localStorage safely)
+  const [order, setOrder] = useState(DEFAULT_ORDER);
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-    return () => unsub();
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem("lh_board_order"));
+        if (Array.isArray(saved) && saved.length) {
+          setOrder(saved);
+        }
+      } catch {}
+    }
   }, []);
-
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("lh_board_order", JSON.stringify(order));
     }
   }, [order]);
+
+  // Auth
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+    return () => unsub();
+  }, []);
 
   // Keep “Main” always present in filters
   const selectableCalendars = useMemo(() => {
@@ -94,17 +96,22 @@ export default function Home() {
         render: ({ dragHandleProps }) => (
           <ConsoleCard
             title="Calendar"
-            subtitle={viewMode === "day" ? "Day view" : viewMode === "month" ? "Month view" : "Year view"}
+            subtitle={
+              viewMode === "day"
+                ? "Day view"
+                : viewMode === "month"
+                ? "Month view"
+                : "Year view"
+            }
             height={720}
             dragHandleProps={dragHandleProps}
             rightSlot={
-            <div className="flex items-center gap-2">
-              <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
-              <AddEventButton />
-            </div>
-          }
+              <div className="flex items-center gap-2">
+                <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
+                {user && <AddEventExpandable defaultCalendarId="main" />}
+              </div>
+            }
           >
-            {/* Inner body is scrollable already via ConsoleCard */}
             {viewMode === "day" && (
               <div className="min-h-[640px]">
                 <CalendarDay
@@ -179,9 +186,8 @@ export default function Home() {
     };
 
     const valid = order.filter((id) => cards[id]);
-    const list = (valid.length ? valid : defaultOrder).map((id) => cards[id]);
-    return list;
-  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars]);
+    return (valid.length ? valid : DEFAULT_ORDER).map((id) => cards[id]); // ✅ fixed typo
+  }, [order, viewMode, calendarFilter, selectedCalendarIds, search, availableCalendars, user]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-neutral-900 dark:to-neutral-950">
@@ -209,19 +215,9 @@ export default function Home() {
                 onCalendarsDiscovered={setAvailableCalendars}
               />
 
-              <button
-              onClick={() => setCreateOpen(true)}
-              className="h-8 px-4 rounded-[12px] border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm font-semibold"
-            >
-              Add calendar
-            </button>
-
-              {/* Add calendar button (opens CreateCalendarModal) */}
+              {/* Single button only */}
               <AddCalendarButton onClick={() => setCreateOpen(true)} />
             </div>
-
-            
-
 
             <div className="flex items-center gap-3">
               <Link
@@ -306,10 +302,7 @@ export default function Home() {
 
         {/* Draggable board */}
         <div className="mt-6">
-          <ConsoleBoard
-            items={items}
-            onReorder={(ids) => setOrder(ids)}
-          />
+          <ConsoleBoard items={items} onReorder={(ids) => setOrder(ids)} />
         </div>
 
         <div className="h-10" />
@@ -317,10 +310,7 @@ export default function Home() {
         {/* Create Calendar Modal */}
         <CreateCalendarModal
           open={createOpen}
-          onClose={(result) => {
-            setCreateOpen(false);
-            // could toast result?.created
-          }}
+          onClose={() => setCreateOpen(false)}
           user={user}
         />
       </div>
