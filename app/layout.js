@@ -1,6 +1,7 @@
 // app/layout.js
 import "./globals.css";
 import Providers from "@/components/Providers"; // <- client provider
+import DarkModeToggle from "@/components/DarkModeToggle";
 
 export const metadata = {
   title: "LifeHub",

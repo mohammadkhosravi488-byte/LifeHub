@@ -5,6 +5,8 @@ import Link from "next/link";
 import { auth, googleProvider } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import ThemeToggle from "@/components/ThemeToggle";
+import DarkModeToggle from "@/components/DarkModeToggle";
+
 
 export default function AuthButtons() {
   const [user, setUser] = useState(null);
