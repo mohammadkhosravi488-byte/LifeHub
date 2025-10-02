@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AddEventButton from "@/components/AddEventButton";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-
 import CreateCalendarModal from "@/components/CreateCalendarModal";
 import DarkModeToggle from "@/components/DarkModeToggle";
 import AuthButtons from "@/components/AuthButtons";
@@ -97,7 +97,12 @@ export default function Home() {
             subtitle={viewMode === "day" ? "Day view" : viewMode === "month" ? "Month view" : "Year view"}
             height={720}
             dragHandleProps={dragHandleProps}
-            rightSlot={<ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />}
+            rightSlot={
+            <div className="flex items-center gap-2">
+              <ViewToggle mode={viewMode} onChange={setViewMode} onCycle={cycleView} />
+              <AddEventButton />
+            </div>
+          }
           >
             {/* Inner body is scrollable already via ConsoleCard */}
             {viewMode === "day" && (
